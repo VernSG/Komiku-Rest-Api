@@ -32,14 +32,12 @@ app.use((req, res, next) => {
 });
 
 const rekomendasiRoute = require("./routes/rekomendasi");
-const trendingRoute = require("./routes/trending");
 const terbaruRoute = require("./routes/terbaru");
 const pustakaRouter = require("./routes/pustaka");
 const komikPopulerRoute = require("./routes/komik-populer");
 const detailKomikRoute = require("./routes/detail-komik");
 const bacaChapterRoute = require("./routes/baca-chapter");
 const searchRoute = require("./routes/search");
-const terbaruRoute2 = require("./routes/terbaru-2");
 const berwarnaRoute = require("./routes/berwarna");
 const genreAll = require("./routes/genre-all");
 const genreDetail = require("./routes/genre-detail");
@@ -67,13 +65,11 @@ app.get("/", (req, res) => {
 });
 
 app.use("/rekomendasi", rekomendasiRoute);
-app.use("/trending", trendingRoute);
 app.use("/terbaru", terbaruRoute);
 app.use("/pustaka", pustakaRouter);
 app.use("/komik-populer", komikPopulerRoute);
 app.use("/detail-komik", detailKomikRoute);
 app.use("/baca-chapter", bacaChapterRoute);
-app.use("/terbaru-2", terbaruRoute2);
 app.use("/search", searchRoute);
 app.use("/berwarna", berwarnaRoute);
 app.use("/genre-all", genreAll);

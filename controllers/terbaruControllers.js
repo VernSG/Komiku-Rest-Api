@@ -6,7 +6,7 @@ const cheerio = require("cheerio");
 const router = express.Router();
 
 const URL_KOMIKU = "https://komiku.org/";
-router.get("/", async (req, res) => {
+const getTerbaru = async (req, res) => {
   try {
     const { data } = await axios.get(URL_KOMIKU, {
       headers: {
@@ -147,6 +147,6 @@ router.get("/", async (req, res) => {
       detail: err.message,
     });
   }
-});
+};
 
-module.exports = router;
+module.exports = { getTerbaru };
