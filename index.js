@@ -1,4 +1,6 @@
 const express = require("express");
+const swaggerUi = require("swagger-ui-express");
+const swaggerJsDoc = require("swagger-jsdoc");
 
 // Tambahkan penanganan error global
 process.on("uncaughtException", (err) => {
@@ -30,6 +32,26 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+const swaggerOptions = {
+  swaggerDefinition: {
+    openapi: "3.0.0",
+    info: {
+      title: "Komiku Rest API",
+      version: "1.0.0",
+      description: "API untuk mengambil data komik dari Komiku",
+    },
+    servers: [
+      {
+        url: `http://localhost:${port}`,
+      },
+    ],
+  },
+  apis: ["./routes/*.js"],
+};
+
+const swaggerDocs = swaggerJsDoc(swaggerOptions);
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 const rekomendasiRoute = require("./routes/rekomendasi");
 const terbaruRoute = require("./routes/terbaru");
