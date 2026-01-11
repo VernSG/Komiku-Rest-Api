@@ -33,6 +33,11 @@ app.use((req, res, next) => {
   next();
 });
 
+// Tentukan base URL berdasarkan environment
+const baseUrl = process.env.VERCEL_URL
+  ? `https://${process.env.VERCEL_URL}`
+  : process.env.BASE_URL || `http://localhost:${port}`;
+
 const swaggerOptions = {
   swaggerDefinition: {
     openapi: "3.0.0",
@@ -43,7 +48,8 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: `http://localhost:${port}`,
+        url: baseUrl,
+        description: process.env.VERCEL_URL ? "Production" : "Development",
       },
     ],
   },
