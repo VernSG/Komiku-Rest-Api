@@ -1,0 +1,36 @@
+version: "3.8"
+
+services:
+  komiku-api:
+    # Nama container
+    container_name: komiku-rest-api
+
+    # Build image dari Dockerfile di direktori saat ini
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    # Port mapping (host:container)
+    ports:
+      - "3001:3001"
+
+    # Environment variables (opsional)
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Volume untuk development (opsional, uncomment jika ingin hot reload)
+    # volumes:
+    #   - .:/app
+    #   - /app/node_modules
+
+    # Network
+    networks:
+      - komiku-network
+
+networks:
+  komiku-network:
+    driver: bridge

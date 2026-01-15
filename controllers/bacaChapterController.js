@@ -107,26 +107,28 @@ const getBacaChapter = async (req, res) => {
 
     const images = [];
     $("#Baca_Komik img").each((i, el) => {
-      const src = $(el).attr("src");
+      const src = $(el).attr("data-src")?.trim() || $(el).attr("src").trim();
       const alt = $(el).attr("alt");
       const id = $(el).attr("id");
 
       // Revised condition to correctly match image URLs from komiku.id's upload directories
-      if (
-        src &&
-        (src.includes("komiku.org/upload") ||
-          src.includes("cdn.komiku.org/upload") ||
-          src.includes("img.komiku.org/upload")) &&
-        id
-      ) {
-        images.push({
-          src,
-          alt,
-          id,
-          fallbackSrc: src
-            .replace("cdn.komiku.id", "img.komiku.id")
-            .replace("komiku.id/upload", "img.komiku.id/upload"), // More robust fallback
-        });
+
+      const isKomikImage =
+        src.includes("/upload") ||
+        src.includes("wp-content") ||
+        src.includes("komiku.org");
+
+      if (src && isKomikImage && id) {
+        if (src && src.trim() !== "") {
+          images.push({
+            src,
+            alt,
+            id,
+            fallbackSrc: src
+              .replace("cdn.komiku.id", "img.komiku.id")
+              .replace("komiku.id/upload", "img.komiku.id/upload"), // More robust fallback
+          });
+        }
       }
     });
 
