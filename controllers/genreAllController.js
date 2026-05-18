@@ -1,63 +1,64 @@
-// File: routes/genre-all.js
-const express = require("express");
-const axios = require("axios");
 const cheerio = require("cheerio");
-const router = express.Router();
-const URL_KOMIKU = "https://komiku.org/";
+const {
+  BASE_URL,
+  fetchHtml,
+  normalizeText,
+  extractMangaSlug,
+  logEmptyParse,
+} = require("./scraperUtils");
+
+function extractGenreSlug(url) {
+  return String(url || "").match(/\/genre\/([^/]+)/)?.[1] || "";
+}
 
 const getGenreAll = async (req, res) => {
   try {
-    const { data } = await axios.get(URL_KOMIKU, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Cache-Control": "public, max-age=3600", // Cache for 1 hour
-      },
-      timeout: 10000, // Optional: 10 seconds timeout
-    });
-
+    const data = await fetchHtml(BASE_URL);
     const $ = cheerio.load(data);
     const allGenres = [];
+    const seen = new Set();
 
-    // Scraping semua genre dari ul.genre
-    $("ul.genre li").each((i, el) => {
-      const anchorTag = $(el).find("a");
+    $("#Filter select[name='genre'] option[value]").each((_, el) => {
+      const option = $(el);
+      const genreSlug = normalizeText(option.attr("value"));
+      const title = normalizeText(option.text()).replace(/\s*\(\d+\)\s*$/, "");
 
-      const title = anchorTag.text().trim();
-      const originalLinkPath = anchorTag.attr("href");
-      const titleAttr = anchorTag.attr("title");
-
-      // Extract genre slug from URL
-      let genreSlug = "";
-      if (originalLinkPath) {
-        const matches = originalLinkPath.match(/\/genre\/([^/]+)/);
-        if (matches && matches[1]) {
-          genreSlug = matches[1];
-        }
-      }
-
-      const apiGenreLink = genreSlug ? `/genre/${genreSlug}` : originalLinkPath;
-
-      // Memastikan originalLink adalah URL absolut
-      const finalOriginalLink = originalLinkPath?.startsWith("http")
-        ? originalLinkPath
-        : originalLinkPath
-        ? `${URL_KOMIKU.slice(0, -1)}${originalLinkPath}`
-        : null;
-
-      if (title && originalLinkPath) {
+      if (title && genreSlug && !seen.has(genreSlug)) {
+        seen.add(genreSlug);
         allGenres.push({
           title,
           slug: genreSlug,
-          // originalLink: finalOriginalLink,
-          apiGenreLink,
-          titleAttr: titleAttr || title,
+          apiGenreLink: `/genre/${genreSlug}`,
+          titleAttr: title,
         });
       }
     });
+
+    $(
+      '#Filter a[href*="/genre/"], #genr a[href*="/genre/"], a[href*="/genre/"]'
+    ).each((_, el) => {
+      const anchorTag = $(el);
+      const title = normalizeText(anchorTag.text()).replace(/\s*\(\d+\)\s*$/, "");
+      const originalLinkPath = anchorTag.attr("href");
+      const genreSlug = extractGenreSlug(originalLinkPath);
+
+      if (title && genreSlug && !extractMangaSlug(originalLinkPath) && !seen.has(genreSlug)) {
+        seen.add(genreSlug);
+        allGenres.push({
+          title,
+          slug: genreSlug,
+          apiGenreLink: `/genre/${genreSlug}`,
+          titleAttr: normalizeText(anchorTag.attr("title")) || title,
+        });
+      }
+    });
+
+    if (!allGenres.length) {
+      logEmptyParse("GET /genre-all", data, {
+        target: BASE_URL,
+        selector: 'a[href*="/genre/"]',
+      });
+    }
 
     res.json(allGenres);
   } catch (err) {
