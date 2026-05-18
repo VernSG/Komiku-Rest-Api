@@ -1,15 +1,39 @@
-<!-- GitAds-Verify: WBSRH26RS33MFZHKP3H9ZYH6UFSEW5LS -->
+<!-- GitAds-Verify: DBW8G884X4K725U9YJY8NEG65BPFJJKJ -->
 
-<p align="center">
-  <img src="./img/swagger.png" alt="Swagger Documentation">
+# Yusuf Portfolio
 
-  <h3 align="center">Mangaverse-API</h3>
+Personal website built with Next.js, TypeScript, and Tailwind CSS.
 
-<!-- <img src="./img/swagger.png" alt="Swagger Documentation"> -->
-  <p align="center">
-    <samp>A RESTful API for scraping and serving manga/manhwa/manhua data from <a href="http://komiku.id/">Komiku.id.</a></samp>
-    <br />
-    <a href="https://github.com/vernsg/komiku-rest-api"><strong>Explore the api »</strong></a>
-    <br />
-  </p>
-</p>
+## Komiku API Docs
+
+![Komiku API Docs preview](./public/komiku-api-docs-preview.svg)
+
+Open the docs:
+[https://yusufs.me/komiku-api-docs](https://yusufs.me/komiku-api-docs)
+
+API base URL:
+
+```txt
+https://komiku-rest-api.vercel.app
+```
+
+Quick test:
+
+```bash
+curl https://komiku-rest-api.vercel.app/terbaru
+curl https://komiku-rest-api.vercel.app/detail-komik/komen-fuufu
+curl https://komiku-rest-api.vercel.app/baca-chapter/komen-fuufu/19
+```
+
+## Local Development
+
+```bash
+npm install
+npm run dev
+```
+
+Then open:
+
+```txt
+http://localhost:3000/komiku-api-docs
+```
