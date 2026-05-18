@@ -9,7 +9,7 @@ Personal website built with Next.js, TypeScript, and Tailwind CSS.
 ![Komiku API Docs preview](./img/komiku-api-docs-preview.svg)
 
 Open the docs:
-[https://yusufs.me/komiku-api-docs](https://yusufs.me/komiku-api-docs)
+[https://vernsg.is-a.dev/komiku-api-docs](https://vernsg.is-a.dev/komiku-api-docs)
 
 API base URL:
 
