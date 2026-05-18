@@ -6,7 +6,7 @@ Personal website built with Next.js, TypeScript, and Tailwind CSS.
 
 ## Komiku API Docs
 
-![Komiku API Docs preview](./public/komiku-api-docs-preview.svg)
+![Komiku API Docs preview](./img/komiku-api-docs-preview.svg)
 
 Open the docs:
 [https://yusufs.me/komiku-api-docs](https://yusufs.me/komiku-api-docs)
