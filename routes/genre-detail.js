@@ -90,7 +90,7 @@ const { handleGenreRequest } = require("../controllers/genreDetailController");
  *                                 example: "https://komiku.org/the-rebirth-of-the-heros-partys-archmage-chapter-00-1/"
  *                               apiLink:
  *                                 type: string
- *                                 example: "/chapter/the-rebirth-of-the-heros-partys-archmage-chapter-00-1/"
+ *                                 example: "/baca-chapter/the-rebirth-of-the-heros-partys-archmage/00-1"
  *                           latest:
  *                             type: object
  *                             properties:
@@ -99,7 +99,7 @@ const { handleGenreRequest } = require("../controllers/genreDetailController");
  *                                 example: "Chapter 107"
  *                               link:
  *                                 type: string
- *                                 example: "https://mangaverse.my.id/the-rebirth-of-the-heros-partys-archmage-chapter-107/"
+ *                                 example: "https://komiku.org/the-rebirth-of-the-heros-partys-archmage-chapter-107/"
  *                               apiLink:
  *                                 type: string
  *                                 example: "/baca-chapter/the-rebirth-of-the-heros-partys-archmage/107"
@@ -108,7 +108,7 @@ const { handleGenreRequest } = require("../controllers/genreDetailController");
  *                   properties:
  *                     targetUrl:
  *                       type: string
- *                       example: "https://api.komiku.org/genre/action/page/1/"
+ *                       example: "https://komiku.org/genre/action/"
  *                     elementsFound:
  *                       type: integer
  *                       example: 10
@@ -210,7 +210,7 @@ const { handleGenreRequest } = require("../controllers/genreDetailController");
  *                                 example: "https://komiku.org/the-tale-of-the-skeleton-messenger-chapter-1/"
  *                               apiLink:
  *                                 type: string
- *                                 example: "/chapter/the-tale-of-the-skeleton-messenger-chapter-1/"
+ *                                 example: "/baca-chapter/the-tale-of-the-skeleton-messenger/1"
  *                           latest:
  *                             type: object
  *                             properties:
@@ -219,7 +219,7 @@ const { handleGenreRequest } = require("../controllers/genreDetailController");
  *                                 example: "Chapter 11"
  *                               link:
  *                                 type: string
- *                                 example: "https://mangaverse.my.id/the-tale-of-the-skeleton-messenger-chapter-11/"
+ *                                 example: "https://komiku.org/the-tale-of-the-skeleton-messenger-chapter-11/"
  *                               apiLink:
  *                                 type: string
  *                                 example: "/baca-chapter/the-tale-of-the-skeleton-messenger/11"
@@ -228,7 +228,7 @@ const { handleGenreRequest } = require("../controllers/genreDetailController");
  *                   properties:
  *                     targetUrl:
  *                       type: string
- *                       example: "https://api.komiku.org/genre/action/page/2/"
+ *                       example: "https://komiku.org/genre/action/page/2/"
  *                     elementsFound:
  *                       type: integer
  *                       example: 10
