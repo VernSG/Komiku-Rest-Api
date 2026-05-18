@@ -1,242 +1,214 @@
-const express = require("express");
-const axios = require("axios");
 const cheerio = require("cheerio");
-const router = express.Router();
+const {
+  BASE_URL,
+  fetchHtml,
+  getAbsoluteUrl,
+  normalizeText,
+  cleanTitle,
+  getImageUrl,
+  extractMangaSlug,
+  extractChapterNumber,
+  extractChapterSlug,
+  logEmptyParse,
+} = require("./scraperUtils");
 
-const URL = "https://komiku.org/";
+function getChapterApiLink(chapterLink) {
+  const chapterSlug = extractChapterSlug(chapterLink);
+  const chapterNumber = extractChapterNumber(chapterLink);
+  return chapterSlug && chapterNumber
+    ? `/baca-chapter/${chapterSlug}/${chapterNumber}`
+    : null;
+}
+
+function parseChapterLink($, linkElement) {
+  const originalLink = getAbsoluteUrl(linkElement.attr("href"));
+  const title =
+    normalizeText(linkElement.find("span").last().text()) ||
+    normalizeText(linkElement.text()) ||
+    normalizeText(linkElement.attr("title"));
+
+  return {
+    title,
+    originalLink,
+    apiLink: getChapterApiLink(originalLink),
+    chapterNumber: extractChapterNumber(originalLink),
+  };
+}
+
+function findLabeledChapterLink($, label) {
+  const candidates = $("#Judul div, section#Informasi div")
+    .toArray()
+    .filter((el) => normalizeText($(el).text()).startsWith(label))
+    .sort(
+      (a, b) => normalizeText($(a).text()).length - normalizeText($(b).text()).length
+    );
+
+  return candidates.length
+    ? $(candidates[0]).find('a[href*="chapter"]').first()
+    : $();
+}
 
 async function scrapeKomikDetail(url) {
-  try {
-    const { data } = await axios.get(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        Referer: "https://komiku.id/",
-        "Cache-Control": "public, max-age=3600",
-      },
-      timeout: 10000, // Timeout 10 detik
-    });
+  const data = await fetchHtml(url);
+  const $ = cheerio.load(data);
 
-    const $ = cheerio.load(data);
-
-    const title = $("h1 span[itemprop='name']").text().trim();
-    const alternativeTitle = $("p.j2").text().trim();
-    const description = $("p.desc").text().trim();
-    const sinopsis = $("section#Sinopsis p").text().trim();
-
-    const thumbnail = $("section#Informasi div.ims img").attr("src");
-
-    const infoTable = {};
-    $("section#Informasi table.inftable tr").each((i, el) => {
-      const key = $(el).find("td").first().text().trim();
-      const value = $(el).find("td").last().text().trim();
-      infoTable[key] = value;
-    });
-
-    const genres = [];
-    $("section#Informasi ul.genre li").each((i, el) => {
-      genres.push($(el).text().trim());
-    });
-
-    let komikSlug = "";
-    const urlMatches = url.match(/\/manga\/([^/]+)/);
-    if (urlMatches && urlMatches[1]) {
-      komikSlug = urlMatches[1];
-    }
-
-    const firstChapterLink = $("#Judul div.new1:contains('Awal:') a").attr(
-      "href"
-    );
-    const latestChapterLink = $("#Judul div.new1:contains('Terbaru:') a").attr(
-      "href"
+  const title =
+    normalizeText($("h1 [itemprop='name']").first().text()) ||
+    normalizeText($("h1").first().text());
+  const alternativeTitle = normalizeText($("p.j2").first().text());
+  const description = normalizeText($("p.desc").first().text());
+  const sinopsis =
+    normalizeText($("section#Sinopsis p").first().text()) ||
+    normalizeText(
+      $("section")
+        .filter((_, el) => /sinopsis/i.test(normalizeText($(el).text())))
+        .find("p")
+        .first()
+        .text()
     );
 
-    let firstChapterSlug = "";
-    let firstChapterNumber = "";
-    if (firstChapterLink) {
-      const chapterMatches = firstChapterLink.match(
-        /\/([^/]+)-chapter-([^/]+)\//
-      );
-      if (chapterMatches && chapterMatches[1] && chapterMatches[2]) {
-        firstChapterSlug = chapterMatches[1];
-        firstChapterNumber = chapterMatches[2];
-      }
+  const thumbnail =
+    getImageUrl($, $("section#Informasi img").first()) ||
+    getAbsoluteUrl($("meta[itemprop='image']").attr("content")) ||
+    getImageUrl($, $("article img").first());
+
+  const infoTable = {};
+  $("section#Informasi table tr, section#Informasi .inftable tr").each(
+    (_, el) => {
+      const cells = $(el).find("td, th");
+      const key = normalizeText(cells.first().text()).replace(/:$/, "");
+      const value = normalizeText(cells.last().text());
+      if (key && value && key !== value) infoTable[key] = value;
     }
+  );
 
-    let latestChapterSlug = "";
-    let latestChapterNumber = "";
-    if (latestChapterLink) {
-      const chapterMatches = latestChapterLink.match(
-        /\/([^/]+)-chapter-([^/]+)\//
-      );
-      if (chapterMatches && chapterMatches[1] && chapterMatches[2]) {
-        latestChapterSlug = chapterMatches[1];
-        latestChapterNumber = chapterMatches[2];
-      }
-    }
+  const genres = [
+    ...new Set(
+      [
+        ...$("section#Informasi a[href*='/genre/'], section#Informasi ul.genre li")
+          .toArray()
+          .map((el) => normalizeText($(el).text())),
+        ...$("meta[itemprop='genre']")
+          .toArray()
+          .map((el) => normalizeText($(el).attr("content"))),
+      ].filter(Boolean)
+    ),
+  ];
 
-    const firstChapter = {
-      title: $("#Judul div.new1:contains('Awal:') a")
-        .text()
-        .replace("Awal:", "")
-        .trim(),
-      originalLink: firstChapterLink,
-      apiLink:
-        firstChapterSlug && firstChapterNumber
-          ? `/baca-chapter/${firstChapterSlug}/${firstChapterNumber}`
-          : null,
-      chapterNumber: firstChapterNumber,
-    };
+  const komikSlug = extractMangaSlug(url);
+  const firstChapterElement = findLabeledChapterLink($, "Awal:");
+  const latestChapterElement = findLabeledChapterLink($, "Terbaru:");
 
-    const latestChapter = {
-      title: $("#Judul div.new1:contains('Terbaru:') a")
-        .text()
-        .replace("Terbaru:", "")
-        .trim(),
-      originalLink: latestChapterLink,
-      apiLink:
-        latestChapterSlug && latestChapterNumber
-          ? `/baca-chapter/${latestChapterSlug}/${latestChapterNumber}`
-          : null,
-      chapterNumber: latestChapterNumber,
-    };
+  const firstChapter = parseChapterLink($, firstChapterElement);
+  const latestChapter = parseChapterLink($, latestChapterElement);
 
-    const chapters = [];
-    $("table#Daftar_Chapter tbody tr").each((i, el) => {
-      if ($(el).find("th").length > 0) return;
+  const chapters = [];
+  const chapterRows = $("section#Chapter table tr, table#Daftar_Chapter tr")
+    .toArray()
+    .filter((el) => $(el).find('a[href*="chapter"]').length);
 
-      const chapterTitle = $(el).find("td.judulseries a span").text().trim();
-      const chapterLink = $(el).find("td.judulseries a").attr("href");
-      const views = $(el).find("td.pembaca i").text().trim();
-      const date = $(el).find("td.tanggalseries").text().trim();
-
-      let chapterSlug = "";
-      let chapterNumber = "";
-      if (chapterLink) {
-        const chapterMatches = chapterLink.match(/\/([^/]+)-chapter-([^/]+)\//);
-        if (chapterMatches && chapterMatches[1] && chapterMatches[2]) {
-          chapterSlug = chapterMatches[1];
-          chapterNumber = chapterMatches[2];
-        }
-      }
-
-      chapters.push({
-        title: chapterTitle,
-        originalLink: chapterLink,
-        apiLink:
-          chapterSlug && chapterNumber
-            ? `/baca-chapter/${chapterSlug}/${chapterNumber}`
-            : null,
-        views,
-        date,
-        chapterNumber,
-      });
+  chapterRows.forEach((el) => {
+    const row = $(el);
+    const chapterLinkElement = row.find('a[href*="chapter"]').first();
+    const chapter = parseChapterLink($, chapterLinkElement);
+    const cells = row.find("td");
+    chapters.push({
+      ...chapter,
+      views: normalizeText(row.find(".pembaca, td.pembaca, i").first().text()),
+      date:
+        normalizeText(row.find(".tanggalseries").first().text()) ||
+        normalizeText(cells.last().text()),
     });
+  });
 
-    const similarKomik = [];
-    try {
-      $("section#Spoiler div.grd").each((i, el) => {
-        try {
-          const title = $(el).find("div.h4").text().trim();
-          const link = $(el).find("a").attr("href");
-
-          // Perbaikan untuk menangani gambar lazy loading
-          let thumbnail = $(el).find("img").attr("src") || "";
-
-          // Jika gambar menggunakan lazy loading, ambil dari data-src
-          if (
-            $(el).find("img").hasClass("lazy") ||
-            (thumbnail && thumbnail.includes("lazy.jpg"))
-          ) {
-            thumbnail = $(el).find("img").attr("data-src") || thumbnail;
-          }
-
-          const type = $(el).find("div.tpe1_inf b").text().trim() || "";
-          const genres =
-            $(el).find("div.tpe1_inf").text().replace(type, "").trim() || "";
-          const synopsis = $(el).find("p").text().trim() || "";
-          const views = $(el).find("div.vw").text().trim() || "";
-
-          let similarKomikSlug = "";
-          if (link) {
-            const mangaMatches = link.match(/\/manga\/([^/]+)/);
-            if (mangaMatches && mangaMatches[1]) {
-              similarKomikSlug = mangaMatches[1];
-            }
-          }
-
-          similarKomik.push({
-            title,
-            originalLink: link || "",
-            apiLink: similarKomikSlug
-              ? `/detail-komik/${similarKomikSlug}`
-              : null,
-            thumbnail,
-            type,
-            genres,
-            synopsis,
-            views,
-            slug: similarKomikSlug,
-          });
-        } catch (itemError) {
-          console.error("Error processing similar komik item:", itemError);
-          // Lanjutkan ke item berikutnya
-        }
-      });
-    } catch (sectionError) {
-      console.error("Error processing similar komik section:", sectionError);
-      // Tetap lanjutkan dengan similarKomik kosong
-    }
-
-    return {
-      title,
-      alternativeTitle,
-      description,
-      sinopsis,
-      thumbnail,
-      info: infoTable,
-      genres,
-      slug: komikSlug,
-      firstChapter: {
-        ...firstChapter,
-        originalLink: firstChapterLink?.startsWith("http")
-          ? firstChapterLink
-          : `https://komiku.id${firstChapterLink}`,
-      },
-      latestChapter: {
-        ...latestChapter,
-        originalLink: latestChapterLink?.startsWith("http")
-          ? latestChapterLink
-          : `https://komiku.id${latestChapterLink}`,
-      },
-      chapters: chapters.map((chapter) => ({
-        ...chapter,
-        originalLink: chapter.originalLink?.startsWith("http")
-          ? chapter.originalLink
-          : `https://komiku.id${chapter.originalLink}`,
-      })),
-      similarKomik: similarKomik.map((komik) => ({
-        ...komik,
-        originalLink: komik.originalLink?.startsWith("http")
-          ? komik.originalLink
-          : `https://komiku.id${komik.originalLink}`,
-      })),
-    };
-  } catch (error) {
-    throw error;
+  if (!chapters.length) {
+    $('a[href*="chapter"]').each((_, el) => {
+      const chapter = parseChapterLink($, $(el));
+      if (chapter.originalLink && chapter.title) {
+        chapters.push({ ...chapter, views: "", date: "" });
+      }
+    });
   }
+
+  const similarKomik = [];
+  $("section#Spoiler, section")
+    .filter((_, el) => /Komik Serupa/i.test(normalizeText($(el).text())))
+    .find('a[href*="/manga/"]')
+    .each((_, el) => {
+      const linkElement = $(el);
+      const card = linkElement.closest("article, li, div");
+      const originalLink = getAbsoluteUrl(linkElement.attr("href"));
+      const slug = extractMangaSlug(originalLink);
+      const img = card.find("img").first();
+      const type =
+        normalizeText(card.find("strong, b").first().text()) ||
+        normalizeText(card.find("[itemprop='additionalType']").attr("content"));
+
+      const item = {
+        title:
+          cleanTitle(card.find(".h4, h3, h4").first().text()) ||
+          cleanTitle(linkElement.attr("title")) ||
+          cleanTitle(img.attr("alt")),
+        originalLink,
+        apiLink: slug ? `/detail-komik/${slug}` : null,
+        thumbnail: getImageUrl($, img),
+        type,
+        genres: normalizeText(card.find(".tpe1_inf").text()).replace(type, "").trim(),
+        synopsis: normalizeText(card.find("p").first().text()),
+        views: normalizeText(card.find(".vw").first().text()),
+        slug,
+      };
+
+      if (
+        item.title &&
+        item.originalLink &&
+        !similarKomik.some((komik) => komik.slug === item.slug)
+      ) {
+        similarKomik.push(item);
+      }
+    });
+
+  if (!title || !thumbnail || !chapters.length) {
+    logEmptyParse("GET /detail-komik", data, {
+      target: url,
+      titleFound: !!title,
+      thumbnailFound: !!thumbnail,
+      chaptersFound: chapters.length,
+      selectors:
+        "h1, section#Informasi img, section#Chapter a[href*='chapter']",
+    });
+  }
+
+  return {
+    title,
+    alternativeTitle,
+    description,
+    sinopsis,
+    thumbnail,
+    info: infoTable,
+    genres,
+    slug: komikSlug,
+    firstChapter,
+    latestChapter,
+    chapters,
+    similarKomik,
+  };
 }
 
 const getDetail = async (req, res) => {
   try {
     const { slug } = req.params;
-
-    const komikUrl = `${URL}manga/${slug}/`;
-
+    const komikUrl = `${BASE_URL}/manga/${slug}/`;
     const komikDetail = await scrapeKomikDetail(komikUrl);
+
+    if (!komikDetail.title || !komikDetail.chapters.length) {
+      return res.status(502).json({
+        error: "Gagal parsing detail komik dari Komiku.",
+        detail:
+          "Struktur HTML detail komik kemungkinan berubah atau data chapter kosong.",
+      });
+    }
+
     res.json(komikDetail);
   } catch (err) {
     console.error("Error fetching komik detail:", err);
@@ -247,36 +219,5 @@ const getDetail = async (req, res) => {
     });
   }
 };
-
-router.get("/url", async (req, res) => {
-  try {
-    const { url } = req.query;
-
-    if (!url) {
-      return res.status(400).json({
-        error: "URL parameter diperlukan",
-      });
-    }
-
-    if (
-      !url.startsWith("https://komiku.id/manga/") &&
-      !url.startsWith("http://komiku.id/manga/")
-    ) {
-      return res.status(400).json({
-        error: "URL tidak valid, harus dari komiku.id/manga/",
-      });
-    }
-
-    const komikDetail = await scrapeKomikDetail(url);
-    res.json(komikDetail);
-  } catch (err) {
-    console.error("Error fetching komik detail from URL:", err);
-    res.status(500).json({
-      error: "Gagal mengambil detail komik",
-      detail: err.message,
-      stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
-    });
-  }
-});
 
 module.exports = { getDetail };

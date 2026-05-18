@@ -1,78 +1,66 @@
-// File: routes/rekomendasi.js (atau nama file yang Anda gunakan untuk route ini)
-
-const express = require("express");
-const axios = require("axios");
 const cheerio = require("cheerio");
-const router = express.Router();
-
-const URL_KOMIKU = "https://komiku.org/";
+const {
+  BASE_URL,
+  fetchHtml,
+  getAbsoluteUrl,
+  normalizeText,
+  cleanTitle,
+  getImageUrl,
+  extractMangaSlug,
+  logEmptyParse,
+} = require("./scraperUtils");
 
 const getRekomendasi = async (req, res) => {
   try {
-    const { data } = await axios.get(URL_KOMIKU, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Cache-Control": "public, max-age=3600", // Cache for 1 hour
-      },
-      timeout: 10000, // Optional: 10 seconds timeout
-    });
-
+    const data = await fetchHtml(BASE_URL);
     const $ = cheerio.load(data);
+    const section =
+      $("#Rekomendasi_Komik").length > 0
+        ? $("#Rekomendasi_Komik")
+        : $("section")
+            .filter((_, el) => /Peringkat|Rekomendasi/i.test($(el).text()))
+            .first();
     const rekomendasi = [];
+    const seen = new Set();
 
-    $("#Rekomendasi_Komik article.ls2").each((i, el) => {
-      const anchorTag = $(el).find("a").first();
-      const imgTag = $(el).find("img");
+    section
+      .find('article, li, div:has(a[href*="/manga/"])')
+      .toArray()
+      .forEach((el) => {
+        const card = $(el);
+        const anchorTag =
+          card.find('h3 a[href*="/manga/"], h4 a[href*="/manga/"]').first()
+            .length
+            ? card.find('h3 a[href*="/manga/"], h4 a[href*="/manga/"]').first()
+            : card.find('a[href*="/manga/"]').first();
+        const originalLink = getAbsoluteUrl(anchorTag.attr("href"));
+        const slug = extractMangaSlug(originalLink);
+        if (!slug || seen.has(slug)) return;
 
-      const title = (
-        imgTag.attr("alt") ||
-        anchorTag.attr("alt") ||
-        $(el).find(".ls2j h3 a").text()
-      ) // Fallback ke teks di dalam <h3><a>
-        ?.replace(/^Baca (Komik|Manga|Manhwa|Manhua)\s+/i, "")
-        .trim();
+        const imgTag = card.find('a[href*="/manga/"] img, img').first();
+        const title =
+          cleanTitle(anchorTag.text()) ||
+          cleanTitle(anchorTag.attr("title")) ||
+          cleanTitle(imgTag.attr("alt"));
+        const thumbnail = getImageUrl($, imgTag);
 
-      const originalLinkPath = anchorTag.attr("href");
-
-      let thumbnail = imgTag.attr("data-src");
-      if (!thumbnail || thumbnail.trim() === "") {
-        thumbnail = imgTag.attr("src");
-      }
-
-      // if (thumbnail && thumbnail.includes('?')) {
-      //   thumbnail = thumbnail.split('?')[0];
-      // }
-
-      let slug = "";
-      if (originalLinkPath) {
-        const matches = originalLinkPath.match(/\/manga\/([^/]+)/);
-        if (matches && matches[1]) {
-          slug = matches[1];
+        if (title && thumbnail && originalLink) {
+          seen.add(slug);
+          rekomendasi.push({
+            title,
+            originalLink,
+            apiDetailLink: `/detail-komik/${slug}`,
+            thumbnail,
+          });
         }
-      }
+      });
 
-      const apiDetailLink = slug ? `/detail-komik/${slug}` : originalLinkPath;
-
-      // Memastikan originalLink adalah URL absolut
-      const finalOriginalLink = originalLinkPath?.startsWith("http")
-        ? originalLinkPath
-        : originalLinkPath
-        ? `${URL_KOMIKU.slice(0, -1)}${originalLinkPath}`
-        : null;
-
-      if (title && thumbnail) {
-        rekomendasi.push({
-          title,
-          originalLink: finalOriginalLink,
-          apiDetailLink,
-          thumbnail,
-        });
-      }
-    });
+    if (!rekomendasi.length) {
+      logEmptyParse("GET /rekomendasi", data, {
+        target: BASE_URL,
+        selector: '#Rekomendasi_Komik a[href*="/manga/"], img',
+      });
+    }
 
     res.json(rekomendasi);
   } catch (err) {

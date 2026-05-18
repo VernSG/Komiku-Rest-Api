@@ -1,42 +1,42 @@
 // File: routes/genre.js
-const express = require("express");
-const axios = require("axios");
 const cheerio = require("cheerio");
-const router = express.Router();
-const URL_KOMIKU = "https://komiku.org/";
+const {
+  BASE_URL,
+  fetchHtml,
+  getAbsoluteUrl,
+  normalizeText,
+  getImageUrl,
+  logEmptyParse,
+} = require("./scraperUtils");
 
 const genreRekomendasi = async (req, res) => {
   try {
-    const { data } = await axios.get(URL_KOMIKU, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Cache-Control": "public, max-age=3600", // Cache for 1 hour
-      },
-      timeout: 10000, // Optional: 10 seconds timeout
-    });
+    const data = await fetchHtml(BASE_URL);
 
     const $ = cheerio.load(data);
     const genreRekomendasi = [];
 
-    // Scraping bagian rekomendasi genre dengan gambar (ls3)
-    $(".ls3").each((i, el) => {
+    const genreCards = $(".ls3").length
+      ? $(".ls3")
+      : $('a[href*="/other/"], a[href*="/statusmanga/"]')
+          .closest("article, li, div")
+          .filter((_, el) => $(el).find("img").length > 0);
+
+    genreCards.each((i, el) => {
+      if (!$(el).find('a[href*="/genre/"], a[href*="/other/"], a[href*="/statusmanga/"]').length) return;
       const anchorTag = $(el).find("a").first();
       const imgTag = $(el).find("img");
-      const titleElement = $(el).find(".ls3p h4");
-      const readLinkElement = $(el).find(".ls3p a");
+      const titleElement = $(el).find("h4, h3").first();
+      const readLinkElement =
+        $(el).find('a[href*="/genre/"], a[href*="/other/"], a[href*="/statusmanga/"]').last();
 
-      const title = titleElement.text().trim();
+      const title =
+        normalizeText(titleElement.text()) ||
+        normalizeText(anchorTag.attr("title")) ||
+        normalizeText(imgTag.attr("alt"));
       const originalLinkPath = anchorTag.attr("href");
       const readLinkPath = readLinkElement.attr("href");
-
-      let thumbnail = imgTag.attr("src");
-      if (!thumbnail || thumbnail.trim() === "") {
-        thumbnail = imgTag.attr("data-src");
-      }
+      const thumbnail = getImageUrl($, imgTag);
 
       // Extract genre slug from URL
       let genreSlug = "";
@@ -58,20 +58,15 @@ const genreRekomendasi = async (req, res) => {
       const apiGenreLink = genreSlug ? `/genre/${genreSlug}` : originalLinkPath;
 
       // Memastikan originalLink adalah URL absolut
-      const finalOriginalLink = originalLinkPath?.startsWith("http")
-        ? originalLinkPath
-        : originalLinkPath
-        ? `${URL_KOMIKU.slice(0, -1)}${originalLinkPath}`
-        : null;
+      const finalOriginalLink = getAbsoluteUrl(originalLinkPath);
 
-      // Memastikan readLink adalah URL absolut
-      const finalReadLink = readLinkPath?.startsWith("http")
-        ? readLinkPath
-        : readLinkPath
-        ? `${URL_KOMIKU.slice(0, -1)}${readLinkPath}`
-        : null;
+      const finalReadLink = getAbsoluteUrl(readLinkPath);
 
-      if (title && thumbnail) {
+      if (
+        title &&
+        thumbnail &&
+        !genreRekomendasi.some((item) => item.originalLink === finalOriginalLink)
+      ) {
         genreRekomendasi.push({
           title,
           slug: genreSlug,
@@ -82,6 +77,13 @@ const genreRekomendasi = async (req, res) => {
         });
       }
     });
+
+    if (!genreRekomendasi.length) {
+      logEmptyParse("GET /genre-rekomendasi", data, {
+        target: BASE_URL,
+        selector: '.ls3, a[href*="/genre/"], img',
+      });
+    }
 
     res.json(genreRekomendasi);
   } catch (err) {

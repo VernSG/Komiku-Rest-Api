@@ -1,145 +1,126 @@
-const express = require("express");
-const axios = require("axios");
 const cheerio = require("cheerio");
-const router = express.Router();
+const {
+  BASE_URL,
+  fetchHtml,
+  getAbsoluteUrl,
+  normalizeText,
+  cleanTitle,
+  getImageUrl,
+  extractMangaSlug,
+  extractChapterNumber,
+  getApiChapterLink,
+  logEmptyParse,
+} = require("./scraperUtils");
 
-const URL_KOMIKU = "https://komiku.org/";
-
-/**
- * @param {cheerio.CheerioAPI} $
- * @param {string} sectionSelector
- * @returns {{title: string, items: Array<object>}}
- */
-function scrapeKomikSection($, sectionSelector) {
-  const sectionElement = $(sectionSelector);
-  const resultItems = [];
-
-  const sectionTitle = sectionElement.find("h2.lsh3").text().trim();
-
-  sectionElement.find("article.ls2").each((i, el) => {
-    const articleElement = $(el);
-    const linkElement = articleElement.find(".ls2v > a").first();
-    const imgElement = linkElement.find("img");
-    const detailElement = articleElement.find(".ls2j");
-
-    let title = imgElement
-      .attr("alt")
-      ?.replace(/^Baca (Manga|Manhwa|Manhua|Komik)\s+/i, "")
-      .trim();
-    if (!title) {
-      title = detailElement.find("h3 a").text().trim();
-    }
-
-    const originalLinkPath = linkElement.attr("href");
-    const originalLink = originalLinkPath?.startsWith("http")
-      ? originalLinkPath
-      : originalLinkPath
-      ? `${URL_KOMIKU.slice(0, -1)}${originalLinkPath}`
-      : null;
-
-    let thumbnail = imgElement.attr("data-src");
-    if (!thumbnail || thumbnail.trim() === "") {
-      thumbnail = imgElement.attr("src");
-    }
-    // Opsional: Hapus query params jika tidak diinginkan, contoh: ?resize=
-    // if (thumbnail && thumbnail.includes('?resize=')) {
-    //   thumbnail = thumbnail.split('?resize=')[0];
-    // }
-
-    const infoText = detailElement.find(".ls2t").text().trim(); // e.g., "Fantasi 1.3jt pembaca"
-    let genre = "";
-    let readers = "";
-
-    const pembacaMatch = infoText.match(
-      /(.+?)\s+([\d.,]+[mjkrb龕万KMBT]?\s*pembaca)$/i
-    );
-    if (pembacaMatch) {
-      genre = pembacaMatch[1].trim();
-      readers = pembacaMatch[2].trim();
-    } else {
-      genre = infoText;
-    }
-
-    const latestChapterElement = detailElement.find("a.ls2l");
-    const latestChapter = latestChapterElement.text().trim();
-    const chapterLinkPath = latestChapterElement.attr("href");
-    const originalChapterLink = chapterLinkPath?.startsWith("http")
-      ? chapterLinkPath
-      : chapterLinkPath
-      ? `${URL_KOMIKU.slice(0, -1)}${chapterLinkPath}`
-      : null;
-
-    let mangaSlug = "";
-    if (originalLinkPath) {
-      const mangaMatches = originalLinkPath.match(/\/manga\/([^/]+)/);
-      if (mangaMatches && mangaMatches[1]) {
-        mangaSlug = mangaMatches[1];
-      }
-    }
-
-    let chapterNumber = "";
-    if (chapterLinkPath) {
-      const chapterNumMatch =
-        chapterLinkPath.match(/-chapter-([\d.]+)\/?$/i) ||
-        chapterLinkPath.match(/\/chapter[_-]([\d.]+)\/?$/i) ||
-        chapterLinkPath.match(/\/([\d.]+)\/?$/i);
-      if (chapterNumMatch && chapterNumMatch[1]) {
-        chapterNumber = chapterNumMatch[1];
-      } else {
-        const textMatch = latestChapter.match(/Chapter\s*([\d.]+)/i);
-        if (textMatch && textMatch[1]) {
-          chapterNumber = textMatch[1];
-        }
-      }
-    }
-
-    const apiDetailLink = mangaSlug ? `/detail-komik/${mangaSlug}` : null;
-    const apiChapterLink =
-      mangaSlug && chapterNumber
-        ? `/baca-chapter/${mangaSlug}/${chapterNumber}`
-        : null;
-
-    if (title && thumbnail && originalLink) {
-      resultItems.push({
-        title,
-        originalLink,
-        apiDetailLink,
-        thumbnail,
-        genre,
-        readers, // e.g., "1.3jt pembaca"
-        latestChapter,
-        originalChapterLink,
-        apiChapterLink,
-        mangaSlug,
-        chapterNumber,
-      });
-    }
-  });
-
-  return { title: sectionTitle, items: resultItems };
+function parseType(...values) {
+  const text = values.map(normalizeText).join(" ");
+  const match = text.match(/\b(Manga|Manhwa|Manhua)\b/i);
+  if (!match) return "";
+  const type = match[1].toLowerCase();
+  return type.charAt(0).toUpperCase() + type.slice(1);
 }
 
-// Route utama untuk mengambil semua data populer (Manga, Manhwa, Manhua)
+function parseKomikCard($, el) {
+  const card = $(el);
+  const mangaLinkElement =
+    card.find('h3 a[href*="/manga/"], h4 a[href*="/manga/"]').first().length
+      ? card.find('h3 a[href*="/manga/"], h4 a[href*="/manga/"]').first()
+      : card.find('a[href*="/manga/"]').first();
+  const originalLink = getAbsoluteUrl(mangaLinkElement.attr("href"));
+  const mangaSlug = extractMangaSlug(originalLink);
+  const img = card.find('a[href*="/manga/"] img, img').first();
+  const infoText = normalizeText(
+    card.find("span, p, small").filter((_, node) => /views?|pembaca|·/i.test($(node).text())).first().text()
+  );
+  const infoParts = infoText.split(/\s*[·|]\s*/).map(normalizeText).filter(Boolean);
+  const genre = infoParts.find((part) => !/views?|pembaca/i.test(part)) || "";
+  const readers = infoParts.find((part) => /views?|pembaca/i.test(part)) || "";
+  const latestChapterElement = card.find('a[href*="chapter"]').last();
+  const originalChapterLink = getAbsoluteUrl(latestChapterElement.attr("href"));
+  const latestChapter =
+    normalizeText(latestChapterElement.text()) ||
+    normalizeText(latestChapterElement.attr("title"));
+  const chapterNumber =
+    extractChapterNumber(originalChapterLink) ||
+    latestChapter.match(/Chapter\s*([\d.]+)/i)?.[1] ||
+    "";
+
+  return {
+    title:
+      cleanTitle(mangaLinkElement.text()) ||
+      cleanTitle(mangaLinkElement.attr("title")) ||
+      cleanTitle(img.attr("alt")),
+    originalLink,
+    apiDetailLink: mangaSlug ? `/detail-komik/${mangaSlug}` : null,
+    thumbnail: getImageUrl($, img),
+    genre,
+    readers,
+    latestChapter,
+    originalChapterLink,
+    apiChapterLink: getApiChapterLink(originalChapterLink, mangaSlug),
+    mangaSlug,
+    chapterNumber,
+    type: parseType(mangaLinkElement.attr("title"), img.attr("alt"), card.text()),
+  };
+}
+
+function scrapeKomikSection($, sectionSelector, fallbackTitle, typeFilter = "") {
+  const sectionElement = $(sectionSelector).length
+    ? $(sectionSelector)
+    : $("section")
+        .filter((_, el) => /Komik Populer|Populer Update|Peringkat/i.test($(el).text()))
+        .first();
+  const title =
+    normalizeText(sectionElement.find("h1,h2,h3").first().text()) ||
+    fallbackTitle;
+  const seen = new Set();
+  const cardElements = sectionElement.find('article:has(a[href*="/manga/"])').length
+    ? sectionElement.find('article:has(a[href*="/manga/"])')
+    : sectionElement.find('li:has(a[href*="/manga/"]), div:has(> a[href*="/manga/"])');
+  const items = cardElements
+    .toArray()
+    .map((el) => parseKomikCard($, el))
+    .filter((item) => {
+      if (
+        !item.title ||
+        !item.originalLink ||
+        !item.thumbnail ||
+        seen.has(item.mangaSlug)
+      ) {
+        return false;
+      }
+
+      if (typeFilter && item.type !== typeFilter) return false;
+      seen.add(item.mangaSlug);
+      return true;
+    })
+    .map(({ type, ...item }) => item);
+
+  return { title: fallbackTitle || title, items };
+}
+
+async function loadHomepage() {
+  const data = await fetchHtml(BASE_URL);
+  return { data, $: cheerio.load(data) };
+}
+
+function ensureItems(context, data, result) {
+  if (!result.items.length) {
+    logEmptyParse(context, data, {
+      target: BASE_URL,
+      selector: '#Komik_Populer a[href*="/manga/"], a[href*="chapter"], img',
+    });
+  }
+}
+
 const komikPopuler = async (req, res) => {
   try {
-    const { data } = await axios.get(URL_KOMIKU, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        Referer: "https://komiku.id/",
-        "Cache-Control": "public, max-age=3600", // Cache for 1 hour
-        timeout: 10000, // Optional: 10 seconds timeout
-      },
-    });
+    const { data, $ } = await loadHomepage();
+    const mangaPopuler = scrapeKomikSection($, "#Komik_Populer", "Manga Populer", "Manga");
+    const manhwaPopuler = scrapeKomikSection($, "#Komik_Populer", "Manhwa Populer", "Manhwa");
+    const manhuaPopuler = scrapeKomikSection($, "#Komik_Populer", "Manhua Populer", "Manhua");
 
-    const $ = cheerio.load(data);
-
-    const mangaPopuler = scrapeKomikSection($, "#Komik_Hot_Manga");
-    const manhwaPopuler = scrapeKomikSection($, "#Komik_Hot_Manhwa");
-    const manhuaPopuler = scrapeKomikSection($, "#Komik_Hot_Manhua");
+    ensureItems("GET /komik-populer manga", data, mangaPopuler);
 
     res.json({
       manga: mangaPopuler,
@@ -155,16 +136,11 @@ const komikPopuler = async (req, res) => {
   }
 };
 
-// Route spesifik untuk Manga Populer
 const rekomendasiManga = async (req, res) => {
   try {
-    const { data } = await axios.get(URL_KOMIKU, {
-      headers: {
-        // header
-      },
-    });
-    const $ = cheerio.load(data);
-    const mangaPopuler = scrapeKomikSection($, "#Komik_Hot_Manga");
+    const { data, $ } = await loadHomepage();
+    const mangaPopuler = scrapeKomikSection($, "#Komik_Populer", "Manga Populer", "Manga");
+    ensureItems("GET /komik-populer/manga", data, mangaPopuler);
     res.json(mangaPopuler);
   } catch (err) {
     console.error("Error scraping manga populer:", err);
@@ -175,14 +151,11 @@ const rekomendasiManga = async (req, res) => {
   }
 };
 
-// Route spesifik untuk Manhwa Populer
 const rekomendasiManhwa = async (req, res) => {
   try {
-    const { data } = await axios.get(URL_KOMIKU, {
-      headers: {},
-    });
-    const $ = cheerio.load(data);
-    const manhwaPopuler = scrapeKomikSection($, "#Komik_Hot_Manhwa");
+    const { data, $ } = await loadHomepage();
+    const manhwaPopuler = scrapeKomikSection($, "#Komik_Populer", "Manhwa Populer", "Manhwa");
+    ensureItems("GET /komik-populer/manhwa", data, manhwaPopuler);
     res.json(manhwaPopuler);
   } catch (err) {
     console.error("Error scraping manhwa populer:", err);
@@ -193,14 +166,11 @@ const rekomendasiManhwa = async (req, res) => {
   }
 };
 
-// Route spesifik untuk Manhua Populer
 const rekomendasiManhua = async (req, res) => {
   try {
-    const { data } = await axios.get(URL_KOMIKU, {
-      headers: {},
-    });
-    const $ = cheerio.load(data);
-    const manhuaPopuler = scrapeKomikSection($, "#Komik_Hot_Manhua");
+    const { data, $ } = await loadHomepage();
+    const manhuaPopuler = scrapeKomikSection($, "#Komik_Populer", "Manhua Populer", "Manhua");
+    ensureItems("GET /komik-populer/manhua", data, manhuaPopuler);
     res.json(manhuaPopuler);
   } catch (err) {
     console.error("Error scraping manhua populer:", err);
