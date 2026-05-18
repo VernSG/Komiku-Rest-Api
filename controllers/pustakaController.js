@@ -1,146 +1,137 @@
-const express = require("express");
-const router = express.Router();
-const axios = require("axios");
 const cheerio = require("cheerio");
+const {
+  BASE_URL,
+  fetchHtml,
+  getAbsoluteUrl,
+  normalizeText,
+  cleanTitle,
+  getImageUrl,
+  extractMangaSlug,
+  getApiChapterLink,
+  logEmptyParse,
+} = require("./scraperUtils");
 
-// Function to get random delay between 1-3 seconds
-const getRandomDelay = () =>
-  Math.floor(Math.random() * (3000 - 1000 + 1) + 1000);
+async function getFragmentHtml(pageUrl, selectorContext) {
+  const shellHtml = await fetchHtml(pageUrl);
+  const $ = cheerio.load(shellHtml);
+  const htmxUrl = $("[hx-get], [data-hx-get]").first().attr("hx-get");
 
-// Function to get random user agent
-const getRandomUserAgent = () => {
-  const userAgents = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 Edg/91.0.864.59",
-  ];
-  return userAgents[Math.floor(Math.random() * userAgents.length)];
-};
-
-// Function to extract slug from URL
-const extractSlug = (url) => {
-  const matches = url.match(/\/manga\/(.*?)\//);
-  return matches ? matches[1] : "";
-};
-
-// Add this helper function after the extractSlug function
-const formatChapterUrl = (url) => {
-  // Extract the manga title and chapter number
-  const match = url.match(/\/([^/]+)-chapter-(\d+)/);
-  if (match) {
-    const [, title, chapter] = match;
-    return `/baca-chapter/${title}/${chapter}`;
-  }
-  return url;
-};
-
-// Function to scrape manga data from a given page
-async function scrapeMangaData(page = 1) {
-  try {
-    // Add delay before request
-    await new Promise((resolve) => setTimeout(resolve, getRandomDelay()));
-
-    const response = await axios.get(
-      `https://api.komiku.id/manga/page/${page}/`,
-      {
-        headers: {
-          "User-Agent": getRandomUserAgent(),
-          Accept:
-            "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-          "Accept-Language": "en-US,en;q=0.5",
-          "Accept-Encoding": "gzip, deflate, br",
-          Connection: "keep-alive",
-          "Upgrade-Insecure-Requests": "1",
-          "Cache-Control": "max-age=0",
-          Referer: "https://komiku.id/",
-        },
-        timeout: 5000,
-      }
-    );
-
-    const $ = cheerio.load(response.data);
-    const mangaList = [];
-
-    $(".bge").each((i, element) => {
-      const url = $(element).find(".bgei a").attr("href");
-      const slug = extractSlug(url);
-
-      // Get first and last chapter elements using more specific selectors
-      const firstChapterElement = $(element).find(
-        ".new1 a[title*='Chapter']:first"
-      );
-      const lastChapterElement = $(element).find(
-        ".new1 a[title*='Chapter']:last"
-      );
-
-      const manga = {
-        title: $(element).find(".kan h3").text().trim(),
-        thumbnail: $(element).find(".bgei img").attr("src"),
-        type: $(element).find(".tpe1_inf b").text(),
-        genre: $(element)
-          .find(".tpe1_inf")
-          .text()
-          .replace($(element).find(".tpe1_inf b").text(), "")
-          .trim(),
-        url: url,
-        detailUrl: `/detail-komik/${slug}`,
-        description: $(element).find(".kan p").text().trim(),
-        stats: $(element).find(".judul2").text().trim(),
-        firstChapter: firstChapterElement.length
-          ? {
-              title: firstChapterElement.attr("title"),
-              url: formatChapterUrl(firstChapterElement.attr("href")),
-            }
-          : null,
-        latestChapter: lastChapterElement.length
-          ? {
-              title: lastChapterElement.attr("title"),
-              url: formatChapterUrl(lastChapterElement.attr("href")),
-            }
-          : null,
-      };
-      mangaList.push(manga);
+  if (!htmxUrl) {
+    logEmptyParse(selectorContext, shellHtml, {
+      target: pageUrl,
+      selector: "[hx-get], [data-hx-get]",
     });
-
-    return {
-      page: page,
-      results: mangaList,
-    };
-  } catch (error) {
-    console.error("Error scraping manga:", error);
-    throw error;
+    return shellHtml;
   }
+
+  return fetchHtml(htmxUrl, {
+    headers: {
+      "HX-Request": "true",
+      Referer: pageUrl,
+    },
+  });
 }
 
-// Add rate limiting middleware
-const rateLimit = require("express-rate-limit");
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-});
+function formatMangaCard($, el) {
+  const card = $(el);
+  const mangaLinkElement =
+    card.find('h1 a[href*="/manga/"], h2 a[href*="/manga/"], h3 a[href*="/manga/"], h4 a[href*="/manga/"]').first()
+      .length
+      ? card.find('h1 a[href*="/manga/"], h2 a[href*="/manga/"], h3 a[href*="/manga/"], h4 a[href*="/manga/"]').first()
+      : card.find('a[href*="/manga/"]').first();
+  const url = getAbsoluteUrl(mangaLinkElement.attr("href"));
+  const slug = extractMangaSlug(url);
+  const img = card.find('a[href*="/manga/"] img, img').first();
+  const type = normalizeText(card.find(".tpe1_inf b, .tpe1_inf strong").first().text());
+  const typeGenreText = normalizeText(card.find(".tpe1_inf").first().text());
+  const chapterLinks = card.find('a[href*="chapter"]').toArray();
+  const firstChapterElement = chapterLinks.length ? $(chapterLinks[0]) : null;
+  const latestChapterElement = chapterLinks.length
+    ? $(chapterLinks[chapterLinks.length - 1])
+    : null;
 
-// Apply rate limiting to all routes
-router.use(limiter);
+  return {
+    title:
+      cleanTitle(card.find("h3, h2, h4").first().text()) ||
+      cleanTitle(mangaLinkElement.attr("title")) ||
+      cleanTitle(img.attr("alt")),
+    thumbnail: getImageUrl($, img),
+    type,
+    genre: typeGenreText.replace(type, "").trim(),
+    url,
+    detailUrl: slug ? `/detail-komik/${slug}` : null,
+    description: normalizeText(card.find("p").first().text()),
+    stats: normalizeText(card.find(".judul2").first().text()),
+    firstChapter: firstChapterElement
+      ? {
+          title:
+            normalizeText(firstChapterElement.attr("title")) ||
+            normalizeText(firstChapterElement.text()),
+          url: getApiChapterLink(firstChapterElement.attr("href")),
+        }
+      : null,
+    latestChapter: latestChapterElement
+      ? {
+          title:
+            normalizeText(latestChapterElement.attr("title")) ||
+            normalizeText(latestChapterElement.text()),
+          url: getApiChapterLink(latestChapterElement.attr("href")),
+        }
+      : null,
+  };
+}
 
-// Route for base pustaka endpoint
+function parseMangaList(html, context) {
+  const $ = cheerio.load(html);
+  const elements = $('.bge:has(a[href*="/manga/"]), article:has(a[href*="/manga/"])').toArray();
+  const seen = new Set();
+  const results = elements
+    .map((el) => formatMangaCard($, el))
+    .filter((item) => {
+      const slug = extractMangaSlug(item.url);
+      if (!item.title || !item.url || seen.has(slug)) return false;
+      seen.add(slug);
+      return true;
+    });
+
+  if (!results.length) {
+    logEmptyParse(context, html, {
+      selector: '.bge/article + a[href*="/manga/"]',
+    });
+  }
+
+  return results;
+}
+
+async function scrapeMangaData(page = 1) {
+  const validPage = Math.max(1, parseInt(page, 10) || 1);
+  const pageUrl = `${BASE_URL}/pustaka/page/${validPage}/`;
+  const html = await getFragmentHtml(pageUrl, `GET /pustaka/page/${validPage}`);
+
+  return {
+    page: validPage,
+    results: parseMangaList(html, `GET /pustaka/page/${validPage}`),
+  };
+}
+
 const getPustaka = {
   getPustakapage: async (req, res) => {
     try {
       const data = await scrapeMangaData(1);
       res.json(data);
     } catch (error) {
+      console.error("Error GET /pustaka:", error);
       res.status(500).json({ error: "Failed to fetch manga data" });
     }
   },
 
-  // Route for paginated pustaka endpoint
   getPustakaPagination: async (req, res) => {
     try {
-      const page = parseInt(req.params.page) || 1;
+      const page = parseInt(req.params.page, 10) || 1;
       const data = await scrapeMangaData(page);
       res.json(data);
     } catch (error) {
+      console.error("Error GET /pustaka/page:", error);
       res.status(500).json({ error: "Failed to fetch manga data" });
     }
   },
