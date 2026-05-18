@@ -96,11 +96,11 @@ async function scrapeKomikDetail(url) {
   ];
 
   const komikSlug = extractMangaSlug(url);
-  const firstChapterElement = findLabeledChapterLink($, "Awal:");
-  const latestChapterElement = findLabeledChapterLink($, "Terbaru:");
+  // const firstChapterElement = findLabeledChapterLink($, "Awal:");
+  // const latestChapterElement = findLabeledChapterLink($, "Terbaru:");
 
-  const firstChapter = parseChapterLink($, firstChapterElement);
-  const latestChapter = parseChapterLink($, latestChapterElement);
+  // const firstChapter = parseChapterLink($, firstChapterElement);
+  // const latestChapter = parseChapterLink($, latestChapterElement);
 
   const chapters = [];
   const chapterRows = $("section#Chapter table tr, table#Daftar_Chapter tr")
@@ -188,8 +188,8 @@ async function scrapeKomikDetail(url) {
     info: infoTable,
     genres,
     slug: komikSlug,
-    firstChapter,
-    latestChapter,
+    // firstChapter,
+    // latestChapter,
     chapters,
     similarKomik,
   };
