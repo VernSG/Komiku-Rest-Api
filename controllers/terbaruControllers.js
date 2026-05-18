@@ -1,143 +1,233 @@
-// File: routes/terbaru.js (atau nama file yang Anda inginkan)
-
-const express = require("express");
-const axios = require("axios");
 const cheerio = require("cheerio");
-const router = express.Router();
+const {
+  BASE_URL,
+  PLACEHOLDER_IMAGE_RE,
+  getAbsoluteUrl,
+  fetchHtml,
+  normalizeText,
+  cleanTitle,
+  extractMangaSlug,
+  extractChapterNumber,
+  logEmptyParse,
+} = require("./scraperUtils");
 
-const URL_KOMIKU = "https://komiku.org/";
+function parseTypeFromText(...values) {
+  const joinedValue = values.map(normalizeText).filter(Boolean).join(" ");
+  const typeMatch = joinedValue.match(/\b(Manga|Manhwa|Manhua)\b/i);
+
+  if (!typeMatch) return "Unknown";
+
+  const type = typeMatch[1].toLowerCase();
+  return type.charAt(0).toUpperCase() + type.slice(1);
+}
+
+function parseGenreAndUpdateTime($, card) {
+  const metadataTexts = [];
+
+  card.find("span, p, small").each((_, el) => {
+    const text = normalizeText($(el).text());
+    if (
+      text &&
+      !/^up\s*\d+/i.test(text) &&
+      !/^chapter\b/i.test(text) &&
+      !/^(manga|manhwa|manhua)$/i.test(text)
+    ) {
+      metadataTexts.push(text);
+    }
+  });
+
+  const metadataText =
+    metadataTexts.find((text) => /lalu|views|·|\|/i.test(text)) ||
+    metadataTexts[0] ||
+    "";
+
+  const parts = metadataText
+    .split(/\s*[·|]\s*/)
+    .map(normalizeText)
+    .filter(Boolean);
+
+  const updateTime =
+    parts.find((part) => /\blalu\b/i.test(part)) ||
+    metadataText.match(/((?:\d+|se)?\s*\w+\s+lalu)/i)?.[1] ||
+    "Unknown";
+
+  const genre =
+    parts.find((part) => !/\blalu\b|views?/i.test(part)) ||
+    metadataText.replace(updateTime, "").replace(/views?/i, "").trim() ||
+    "Unknown";
+
+  return {
+    genre: genre || "Unknown",
+    updateTime: updateTime || "Unknown",
+  };
+}
+
+function findTerbaruSection($) {
+  const directSection = $("#Terbaru");
+  if (directSection.length) return directSection.first();
+
+  const sections = $("section, main, div")
+    .toArray()
+    .filter((el) => {
+      const element = $(el);
+      const headingText = normalizeText(
+        element.children("h1,h2,h3,h4,header").first().text()
+      );
+      const hasUpdateHeading = /terbaru|update/i.test(headingText);
+      const hasCards =
+        element.find('a[href*="/manga/"]').length > 0 &&
+        element.find('a[href*="chapter"]').length > 0;
+
+      return hasUpdateHeading && hasCards;
+    });
+
+  return sections.length ? $(sections[0]) : null;
+}
+
+function getCandidateCards($, section) {
+  const selectors = [
+    "article",
+    'li:has(a[href*="/manga/"]):has(a[href*="chapter"])',
+    'div:has(> a[href*="/manga/"]):has(a[href*="chapter"])',
+    'div:has(a[href*="/manga/"]):has(a[href*="chapter"]):has(img)',
+  ];
+
+  const root = section && section.length ? section : $.root();
+
+  for (const selector of selectors) {
+    const cards = root
+      .find(selector)
+      .toArray()
+      .filter((el) => {
+        const card = $(el);
+        return (
+          card.find('a[href*="/manga/"]').length > 0 &&
+          card.find('a[href*="chapter"]').length > 0 &&
+          card.find("img").length > 0
+        );
+      });
+
+    if (cards.length) return cards;
+  }
+
+  return $('a[href*="/manga/"]')
+    .toArray()
+    .map((link) => $(link).closest("article, li, div").get(0))
+    .filter(Boolean);
+}
+
+function parseCard($, cardElement) {
+  const card = $(cardElement);
+  const mangaLinkElement =
+    card.find('h1 a[href*="/manga/"], h2 a[href*="/manga/"], h3 a[href*="/manga/"], h4 a[href*="/manga/"]').first()
+      .length
+      ? card.find('h1 a[href*="/manga/"], h2 a[href*="/manga/"], h3 a[href*="/manga/"], h4 a[href*="/manga/"]').first()
+      : card.find('a[href*="/manga/"]').filter((_, el) => normalizeText($(el).text())).first()
+          .length
+        ? card.find('a[href*="/manga/"]').filter((_, el) => normalizeText($(el).text())).first()
+        : card.find('a[href*="/manga/"]').first();
+
+  const imageElement =
+    card.find('a[href*="/manga/"] img').first().length
+      ? card.find('a[href*="/manga/"] img').first()
+      : card.find("img").first();
+
+  const originalLink = getAbsoluteUrl(mangaLinkElement.attr("href"));
+  const title =
+    cleanTitle(mangaLinkElement.text()) ||
+    cleanTitle(mangaLinkElement.attr("title")) ||
+    cleanTitle(imageElement.attr("alt")) ||
+    "Judul Tidak Tersedia";
+
+  const thumbnailSource =
+    imageElement.attr("data-src") ||
+    imageElement.attr("data-lazy-src") ||
+    imageElement.attr("data-original") ||
+    imageElement.attr("src");
+  const thumbnail = getAbsoluteUrl(thumbnailSource);
+
+  const latestChapterElement =
+    card.find('a[href*="chapter"]').filter((_, el) => normalizeText($(el).text())).first()
+      .length
+      ? card.find('a[href*="chapter"]').filter((_, el) => normalizeText($(el).text())).first()
+      : card.find('a[href*="chapter"]').first();
+  const latestChapterTitle =
+    normalizeText(latestChapterElement.text()) ||
+    normalizeText(latestChapterElement.attr("title"));
+  const latestChapterLink = getAbsoluteUrl(latestChapterElement.attr("href"));
+  const { genre, updateTime } = parseGenreAndUpdateTime($, card);
+  const updateCountText =
+    normalizeText(card.find("span").filter((_, el) => /^up\s*\d+/i.test(normalizeText($(el).text()))).first().text()) ||
+    normalizeText(card.text()).match(/\bUp\s*\d+\b/i)?.[0] ||
+    "";
+  const type = parseTypeFromText(
+    mangaLinkElement.attr("title"),
+    imageElement.attr("alt"),
+    card.text()
+  );
+  const isColored = /\b(berwarna|color|colored)\b/i.test(card.text());
+  const mangaSlug = extractMangaSlug(originalLink);
+  const chapterNumber = extractChapterNumber(latestChapterLink);
+
+  return {
+    title,
+    originalLink,
+    thumbnail,
+    type,
+    genre,
+    updateTime,
+    latestChapterTitle,
+    latestChapterLink,
+    isColored,
+    updateCountText,
+    mangaSlug,
+    apiDetailLink: mangaSlug ? `/detail-komik/${mangaSlug}` : null,
+    apiChapterLink:
+      mangaSlug && chapterNumber
+        ? `/baca-chapter/${mangaSlug}/${chapterNumber}`
+        : null,
+  };
+}
+
+function parseTerbaruHtml(html) {
+  const $ = cheerio.load(html);
+  const section = findTerbaruSection($);
+  const candidateCards = getCandidateCards($, section);
+  const seen = new Set();
+
+  return candidateCards
+    .map((card) => parseCard($, card))
+    .filter((item) => {
+      const hasRequiredData =
+        item.title &&
+        item.title !== "Judul Tidak Tersedia" &&
+        item.originalLink &&
+        item.thumbnail &&
+        !PLACEHOLDER_IMAGE_RE.test(item.thumbnail);
+
+      const key = `${item.mangaSlug}:${item.latestChapterLink || ""}`;
+      if (!hasRequiredData || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
 const getTerbaru = async (req, res) => {
   try {
-    const { data } = await axios.get(URL_KOMIKU, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Cache-Control": "public, max-age=3600", // Cache for 1 hour
-      },
-      timeout: 10000, // Opsional: 10 detik timeout
-    });
+    const data = await fetchHtml(BASE_URL);
 
-    const $ = cheerio.load(data);
-    const komikTerbaru = [];
+    const komikTerbaru = parseTerbaruHtml(data);
 
-    $("#Terbaru div.ls4w article.ls4").each((i, el) => {
-      const element = $(el);
+    if (!komikTerbaru.length) {
+      logEmptyParse("GET /terbaru", data, { target: BASE_URL });
 
-      const linkElement = element.find(".ls4v > a").first();
-      const imgElement = linkElement.find("img");
-      const detailElement = element.find(".ls4j");
-
-      const titleFromImgAlt = imgElement
-        .attr("alt")
-        ?.replace(/^Baca (Manga|Manhwa|Manhua)\s+/i, "")
-        .trim();
-      const titleFromH3 = detailElement.find("h3 > a").text().trim();
-      const title = titleFromH3 || titleFromImgAlt || "Judul Tidak Tersedia";
-
-      const originalLinkPath = linkElement.attr("href");
-      const originalLink = originalLinkPath?.startsWith("http")
-        ? originalLinkPath
-        : originalLinkPath
-        ? `${URL_KOMIKU.slice(0, -1)}${originalLinkPath}`
-        : null;
-
-      let thumbnail = imgElement.attr("data-src");
-      if (!thumbnail || thumbnail.trim() === "") {
-        thumbnail = imgElement.attr("src");
-      }
-      // Opsional: Membersihkan URL thumbnail jika ada parameter yang tidak diinginkan (misal ?resize=)
-      // if (thumbnail && thumbnail.includes('?')) {
-      //   thumbnail = thumbnail.split('?')[0];
-      // }
-
-      const typeGenreTimeString = detailElement.find("span.ls4s").text().trim();
-      let type = "Unknown";
-      let genre = "Unknown";
-      let updateTime = "Unknown";
-
-      const typeMatch = typeGenreTimeString.match(/^(Manga|Manhwa|Manhua)/i);
-      if (typeMatch) {
-        type = typeMatch[0];
-        const restOfString = typeGenreTimeString.substring(type.length).trim();
-        const timeMatch = restOfString.match(/(.+?)\s+([\d\w\s]+lalu)$/i);
-        if (timeMatch) {
-          genre = timeMatch[1].trim();
-          updateTime = timeMatch[2].trim();
-        } else {
-          genre = restOfString;
-        }
-      } else {
-        const parts = typeGenreTimeString.split(/\s+/);
-        if (parts.length >= 2) {
-          if (parts[parts.length - 1] === "lalu" && parts.length > 2) {
-            updateTime = parts.slice(-2).join(" ");
-            genre = parts.slice(0, -2).join(" ");
-          } else {
-            genre = typeGenreTimeString;
-          }
-        } else {
-          genre = typeGenreTimeString;
-        }
-      }
-
-      const latestChapterElement = detailElement.find("a.ls24");
-      const latestChapterTitle = latestChapterElement.text().trim();
-      const latestChapterLinkPath = latestChapterElement.attr("href");
-      const latestChapterLink = latestChapterLinkPath?.startsWith("http")
-        ? latestChapterLinkPath
-        : latestChapterLinkPath
-        ? `${URL_KOMIKU.slice(0, -1)}${latestChapterLinkPath}`
-        : null;
-
-      const isColored = element.find(".ls4v span.warna").length > 0;
-      const updateCountText = element.find(".ls4v span.up").text().trim();
-
-      let mangaSlug = "";
-      if (originalLinkPath) {
-        const slugMatches = originalLinkPath.match(/\/manga\/([^/]+)/);
-        if (slugMatches && slugMatches[1]) {
-          mangaSlug = slugMatches[1];
-        }
-      }
-      const apiDetailLink = mangaSlug ? `/detail-komik/${mangaSlug}` : null;
-
-      let apiChapterLink = null;
-      if (latestChapterLinkPath && mangaSlug) {
-        const chapterNumMatch =
-          latestChapterLinkPath.match(/-chapter-([\d.]+)\/?$/i) ||
-          latestChapterLinkPath.match(/\/([\d.]+)\/?$/i);
-        if (chapterNumMatch && chapterNumMatch[1]) {
-          const chapterNumber = chapterNumMatch[1];
-          apiChapterLink = `/baca-chapter/${mangaSlug}/${chapterNumber}`;
-        }
-      }
-
-      if (
-        title &&
-        title !== "Judul Tidak Tersedia" &&
-        thumbnail &&
-        originalLink
-      ) {
-        komikTerbaru.push({
-          title,
-          originalLink,
-          thumbnail,
-          type,
-          genre,
-          updateTime,
-          latestChapterTitle,
-          latestChapterLink,
-          isColored,
-          updateCountText,
-          mangaSlug,
-          apiDetailLink,
-          apiChapterLink,
-        });
-      }
-    });
+      return res.status(502).json({
+        error:
+          "Gagal parsing daftar komik terbaru dari Komiku: hasil kosong.",
+        detail:
+          "Struktur HTML Komiku kemungkinan berubah atau halaman target tidak memuat daftar terbaru.",
+      });
+    }
 
     res.json(komikTerbaru);
   } catch (err) {
@@ -149,4 +239,4 @@ const getTerbaru = async (req, res) => {
   }
 };
 
-module.exports = { getTerbaru };
+module.exports = { getTerbaru, getAbsoluteUrl };
