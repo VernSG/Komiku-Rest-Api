@@ -89,18 +89,20 @@ function extractMangaSlug(url) {
 function extractChapterNumber(url) {
   if (!url) return "";
 
+  const chapterNumberPattern = "([\\d]+(?:[.-]\\d+)*)";
+
   try {
     const { pathname } = new URL(url, BASE_URL);
     return (
-      pathname.match(/-chapter-([\d.]+)\/?$/i)?.[1] ||
-      pathname.match(/\/chapter\/([\d.]+)\/?$/i)?.[1] ||
-      pathname.match(/\/([\d.]+)\/?$/i)?.[1] ||
+      pathname.match(new RegExp(`-chapter-${chapterNumberPattern}/?$`, "i"))?.[1] ||
+      pathname.match(new RegExp(`/chapter/${chapterNumberPattern}/?$`, "i"))?.[1] ||
+      pathname.match(new RegExp(`/${chapterNumberPattern}/?$`, "i"))?.[1] ||
       ""
     );
   } catch (error) {
     return (
-      String(url).match(/-chapter-([\d.]+)\/?$/i)?.[1] ||
-      String(url).match(/\/([\d.]+)\/?$/i)?.[1] ||
+      String(url).match(new RegExp(`-chapter-${chapterNumberPattern}/?$`, "i"))?.[1] ||
+      String(url).match(new RegExp(`/${chapterNumberPattern}/?$`, "i"))?.[1] ||
       ""
     );
   }

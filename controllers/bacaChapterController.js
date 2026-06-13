@@ -48,11 +48,46 @@ function getDescription($) {
   );
 }
 
+function chapterSortValue(chapter) {
+  const normalized = String(chapter || "").replace(/-/g, ".");
+  const value = parseFloat(normalized);
+  return Number.isNaN(value) ? 0 : value;
+}
+
+function getChapterUrlCandidates(slug, chapter) {
+  const rawChapter = String(chapter || "").trim();
+  const normalizedChapter = rawChapter.replace(/\./g, "-");
+  const candidates = [rawChapter, normalizedChapter]
+    .filter(Boolean)
+    .filter((value, index, allValues) => allValues.indexOf(value) === index);
+
+  return candidates.map((chapterValue) => ({
+    chapterValue,
+    url: `${BASE_URL}/${slug}-chapter-${chapterValue}/`,
+  }));
+}
+
+async function fetchChapterHtml(slug, chapter) {
+  const candidates = getChapterUrlCandidates(slug, chapter);
+  let lastError;
+
+  for (const candidate of candidates) {
+    try {
+      const data = await fetchHtml(candidate.url);
+      return { data, chapterUrl: candidate.url, chapterValue: candidate.chapterValue };
+    } catch (error) {
+      lastError = error;
+      if (!error.response || error.response.status !== 404) throw error;
+    }
+  }
+
+  throw lastError;
+}
+
 const getBacaChapter = async (req, res) => {
   try {
     const { slug, chapter } = req.params;
-    const chapterUrl = `${BASE_URL}/${slug}-chapter-${chapter}/`;
-    const data = await fetchHtml(chapterUrl);
+    const { data, chapterUrl, chapterValue } = await fetchChapterHtml(slug, chapter);
     const $ = cheerio.load(data);
 
     const title =
@@ -109,38 +144,38 @@ const getBacaChapter = async (req, res) => {
       .map((el) => getAbsoluteUrl($(el).attr("href")))
       .filter(Boolean);
 
-    const currentChapterNumber = parseFloat(chapter);
+    const currentChapterNumber = chapterSortValue(chapterValue);
     const chapterCandidates = [
       ...new Set(
         navigationLinks.filter(
           (link) =>
             extractChapterSlug(link) === slug &&
-            extractChapterNumber(link) !== String(chapter)
+            extractChapterNumber(link) !== String(chapterValue)
         )
       ),
     ];
 
     const prevLink =
       chapterCandidates
-        .filter((link) => parseFloat(extractChapterNumber(link)) < currentChapterNumber)
+        .filter((link) => chapterSortValue(extractChapterNumber(link)) < currentChapterNumber)
         .sort(
           (a, b) =>
-            parseFloat(extractChapterNumber(b)) -
-            parseFloat(extractChapterNumber(a))
+            chapterSortValue(extractChapterNumber(b)) -
+            chapterSortValue(extractChapterNumber(a))
         )[0] || "";
     const nextLink =
       chapterCandidates
-        .filter((link) => parseFloat(extractChapterNumber(link)) > currentChapterNumber)
+        .filter((link) => chapterSortValue(extractChapterNumber(link)) > currentChapterNumber)
         .sort(
           (a, b) =>
-            parseFloat(extractChapterNumber(a)) -
-            parseFloat(extractChapterNumber(b))
+            chapterSortValue(extractChapterNumber(a)) -
+            chapterSortValue(extractChapterNumber(b))
         )[0] || "";
 
     const chapterValueInfo =
-      $(".chapterInfo").attr("valuechapter") ||
       extractChapterNumber(chapterUrl) ||
-      chapter;
+      $(".chapterInfo").attr("valuechapter") ||
+      chapterValue;
     const totalImages =
       $(".chapterInfo").attr("valuegambar") || uniqueImages.length.toString();
     const viewAnalyticsUrl = $(".chapterInfo").attr("valueview") || "";
