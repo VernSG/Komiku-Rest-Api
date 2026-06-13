@@ -1,6 +1,9 @@
 const express = require("express");
+const path = require("path");
+const axios = require("axios");
 const swaggerUi = require("swagger-ui-express");
 const swaggerJsDoc = require("swagger-jsdoc");
+const { requestHeaders } = require("./controllers/scraperUtils");
 
 // Tambahkan penanganan error global
 process.on("uncaughtException", (err) => {
@@ -18,6 +21,19 @@ const port = process.env.PORT || 3001;
 const rateLimiter = require("./middleware/rateLimiter");
 
 app.use(rateLimiter);
+app.use(
+  express.static(path.join(__dirname, "frontend"), {
+    etag: true,
+    maxAge: "1y",
+    immutable: true,
+    setHeaders: (res, filePath) => {
+      const fileName = path.basename(filePath);
+      if (["index.html", "robots.txt", "sitemap.xml"].includes(fileName)) {
+        res.setHeader("Cache-Control", "no-cache");
+      }
+    },
+  })
+);
 
 // Middleware for CORS
 app.use((req, res, next) => {
@@ -67,23 +83,52 @@ const genreRekomendasi = require("./routes/genre-rekomendasi");
 
 // Root route
 app.get("/", (req, res) => {
-  res.json({
-    message: "Welcome to Komiku Rest API",
-    version: "1.0.0",
-    endpoints: [
-      "/rekomendasi",
-      "/trending",
-      "/terbaru-2",
-      "/terbaru",
-      "/pustaka",
-      "/berwarna",
-      "/komik-populer",
-      "/detail-komik/:slug",
-      "/baca-chapter/:slug/:chapter",
-      "/search?q=keyword",
-      "/genre-detail/:slug",
-    ],
-  });
+  res.setHeader("Cache-Control", "no-cache");
+  res.sendFile(path.join(__dirname, "frontend", "index.html"));
+});
+
+app.get("/image-proxy", async (req, res) => {
+  try {
+    const imageUrl = new URL(req.query.url || "");
+    const requestedReferer = req.query.referer
+      ? new URL(req.query.referer, "https://komiku.org/")
+      : new URL("https://komiku.org/");
+    const referer =
+      requestedReferer.hostname === "komiku.org"
+        ? requestedReferer.toString()
+        : "https://komiku.org/";
+    const allowedHosts = new Set([
+      "img.komiku.org",
+      "cdn.komiku.org",
+      "thumbnail.komiku.org",
+    ]);
+
+    if (!allowedHosts.has(imageUrl.hostname)) {
+      return res.status(400).json({ error: "Domain gambar tidak diizinkan." });
+    }
+
+    const upstream = await axios.get(imageUrl.toString(), {
+      responseType: "stream",
+      timeout: 20000,
+      headers: {
+        ...requestHeaders,
+        Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        Referer: referer,
+      },
+    });
+
+    res.setHeader("Content-Type", upstream.headers["content-type"] || "image/webp");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    upstream.data.pipe(res);
+  } catch (error) {
+    console.error("Gagal proxy gambar:", error.message);
+    res.status(502).json({ error: "Gagal mengambil gambar dari sumber." });
+  }
+});
+
+app.use((req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
 });
 
 app.use("/rekomendasi", rekomendasiRoute);
