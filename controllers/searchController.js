@@ -8,6 +8,7 @@ const {
   getImageUrl,
   extractMangaSlug,
   logEmptyParse,
+  findHtmxUrl,
 } = require("./scraperUtils");
 
 const getSearch = async (req, res) => {
@@ -25,9 +26,10 @@ const getSearch = async (req, res) => {
     let hasil = parseResults($);
 
     if (!hasil.length) {
-      const htmxUrl = $('[hx-get*="post_type=manga"], [data-hx-get*="post_type=manga"]')
-        .first()
-        .attr("hx-get");
+      const htmxUrl =
+        $('[hx-get*="post_type=manga"], [data-hx-get*="post_type=manga"]')
+          .first()
+          .attr("hx-get") || findHtmxUrl($);
 
       if (htmxUrl) {
         const htmxHtml = await fetchHtml(htmxUrl, {
@@ -37,6 +39,7 @@ const getSearch = async (req, res) => {
           },
         });
         hasil = parseResults(cheerio.load(htmxHtml));
+
 
         if (!hasil.length) {
           logEmptyParse("GET /search htmx", htmxHtml, {
