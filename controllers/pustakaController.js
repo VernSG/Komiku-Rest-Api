@@ -9,12 +9,13 @@ const {
   extractMangaSlug,
   getApiChapterLink,
   logEmptyParse,
+  findHtmxUrl,
 } = require("./scraperUtils");
 
 async function getFragmentHtml(pageUrl, selectorContext) {
   const shellHtml = await fetchHtml(pageUrl);
   const $ = cheerio.load(shellHtml);
-  const htmxUrl = $("[hx-get], [data-hx-get]").first().attr("hx-get");
+  const htmxUrl = findHtmxUrl($);
 
   if (!htmxUrl) {
     logEmptyParse(selectorContext, shellHtml, {
@@ -31,6 +32,7 @@ async function getFragmentHtml(pageUrl, selectorContext) {
     },
   });
 }
+
 
 function formatMangaCard($, el) {
   const card = $(el);
