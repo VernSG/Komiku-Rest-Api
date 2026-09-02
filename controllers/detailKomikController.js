@@ -211,6 +211,12 @@ const getDetail = async (req, res) => {
 
     res.json(komikDetail);
   } catch (err) {
+    if (err.response && err.response.status === 404) {
+      return res.status(404).json({
+        error: "Komik tidak ditemukan",
+        detail: "Komik dengan slug tersebut tidak ditemukan di situs Komiku.",
+      });
+    }
     console.error("Error fetching komik detail:", err);
     res.status(500).json({
       error: "Gagal mengambil detail komik",
@@ -221,3 +227,4 @@ const getDetail = async (req, res) => {
 };
 
 module.exports = { getDetail };
+
