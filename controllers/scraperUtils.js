@@ -134,6 +134,18 @@ function logEmptyParse(context, html, extra = {}) {
   });
 }
 
+function findHtmxUrl($) {
+  if (!$) return null;
+  const elements = $("[hx-get], [data-hx-get]").toArray();
+  for (const el of elements) {
+    const url = $(el).attr("hx-get") || $(el).attr("data-hx-get");
+    if (url && !url.includes("analytics.komiku.org") && !/analytics/i.test(url)) {
+      return url;
+    }
+  }
+  return null;
+}
+
 module.exports = {
   BASE_URL,
   PLACEHOLDER_IMAGE_RE,
@@ -149,4 +161,6 @@ module.exports = {
   extractChapterSlug,
   getApiChapterLink,
   logEmptyParse,
+  findHtmxUrl,
 };
+

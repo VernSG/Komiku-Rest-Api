@@ -9,6 +9,7 @@ const {
   extractMangaSlug,
   getApiChapterLink,
   logEmptyParse,
+  findHtmxUrl,
 } = require("./scraperUtils");
 
 console.log("Loading berwarna route for Express 5...");
@@ -21,7 +22,7 @@ async function getBerwarnaHtml(page) {
       : `${BASE_URL}/other/berwarna/page/${validPage}/`;
   const shellHtml = await fetchHtml(pageUrl);
   const $shell = cheerio.load(shellHtml);
-  const htmxUrl = $shell("[hx-get], [data-hx-get]").first().attr("hx-get");
+  const htmxUrl = findHtmxUrl($shell);
 
   if (!htmxUrl) {
     logEmptyParse("GET /berwarna shell", shellHtml, {
@@ -40,6 +41,7 @@ async function getBerwarnaHtml(page) {
 
   return { html, pageUrl, htmxUrl: getAbsoluteUrl(htmxUrl), validPage };
 }
+
 
 function parseCard($, el) {
   const card = $(el);

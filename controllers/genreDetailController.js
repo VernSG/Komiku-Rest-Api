@@ -9,6 +9,7 @@ const {
   extractMangaSlug,
   getApiChapterLink,
   logEmptyParse,
+  findHtmxUrl,
 } = require("./scraperUtils");
 
 function parseMangaCard($, el) {
@@ -68,7 +69,7 @@ async function loadGenreHtml(slug, pageNum) {
   const targetUrl = `${BASE_URL}${pagePath}`;
   const shellHtml = await fetchHtml(targetUrl);
   const $shell = cheerio.load(shellHtml);
-  const htmxUrl = $shell("[hx-get], [data-hx-get]").first().attr("hx-get");
+  const htmxUrl = findHtmxUrl($shell);
 
   if (!htmxUrl) {
     return { html: shellHtml, targetUrl, htmxUrl: null };
@@ -83,6 +84,7 @@ async function loadGenreHtml(slug, pageNum) {
 
   return { html, targetUrl, htmxUrl: getAbsoluteUrl(htmxUrl) };
 }
+
 
 async function handleGenreRequest(req, res) {
   try {
