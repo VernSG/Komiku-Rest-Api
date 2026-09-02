@@ -97,15 +97,13 @@ app.get("/image-proxy", async (req, res) => {
       requestedReferer.hostname === "komiku.org"
         ? requestedReferer.toString()
         : "https://komiku.org/";
-    const allowedHosts = new Set([
-      "img.komiku.org",
-      "cdn.komiku.org",
-      "thumbnail.komiku.org",
-    ]);
+    const isAllowedHost =
+      /(^|\.)komiku\.(org|to|id|me|co)$/i.test(imageUrl.hostname);
 
-    if (!allowedHosts.has(imageUrl.hostname)) {
+    if (!isAllowedHost) {
       return res.status(400).json({ error: "Domain gambar tidak diizinkan." });
     }
+
 
     const upstream = await axios.get(imageUrl.toString(), {
       responseType: "stream",
