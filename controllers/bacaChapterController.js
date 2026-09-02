@@ -226,6 +226,12 @@ const getBacaChapter = async (req, res) => {
       additionalDescription,
     });
   } catch (err) {
+    if (err.response && err.response.status === 404) {
+      return res.status(404).json({
+        error: "Chapter tidak ditemukan",
+        detail: "Chapter komik tersebut tidak ditemukan di situs Komiku.",
+      });
+    }
     console.error("Error fetching chapter:", err);
     res.status(500).json({
       error: "Gagal mengambil data chapter komik",
@@ -236,3 +242,4 @@ const getBacaChapter = async (req, res) => {
 };
 
 module.exports = { getBacaChapter, extractSlugAndChapter };
+
