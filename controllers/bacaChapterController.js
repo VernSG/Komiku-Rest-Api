@@ -57,7 +57,11 @@ function chapterSortValue(chapter) {
 function getChapterUrlCandidates(slug, chapter) {
   const rawChapter = String(chapter || "").trim();
   const normalizedChapter = rawChapter.replace(/\./g, "-");
-  const candidates = [rawChapter, normalizedChapter]
+  const paddedChapter = /^\d$/.test(normalizedChapter)
+    ? normalizedChapter.padStart(2, "0")
+    : normalizedChapter;
+
+  const candidates = [rawChapter, normalizedChapter, paddedChapter]
     .filter(Boolean)
     .filter((value, index, allValues) => allValues.indexOf(value) === index);
 
