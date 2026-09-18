@@ -1,7 +1,13 @@
+const https = require("https");
 const axios = require("axios");
 
 const BASE_URL = "https://komiku.org";
 const PLACEHOLDER_IMAGE_RE = /\/asset\/img\/lazy\.jpg/i;
+
+const httpsAgent = new https.Agent({
+  rejectUnauthorized: false,
+  keepAlive: true,
+});
 
 const requestHeaders = {
   "User-Agent":
@@ -28,6 +34,7 @@ function getAbsoluteUrl(url, baseUrl = BASE_URL) {
 async function fetchHtml(url, options = {}) {
   const absoluteUrl = getAbsoluteUrl(url);
   const { data } = await axios.get(absoluteUrl, {
+    httpsAgent,
     ...options,
     headers: {
       ...requestHeaders,
@@ -149,6 +156,7 @@ function findHtmxUrl($) {
 module.exports = {
   BASE_URL,
   PLACEHOLDER_IMAGE_RE,
+  httpsAgent,
   requestHeaders,
   getAbsoluteUrl,
   fetchHtml,

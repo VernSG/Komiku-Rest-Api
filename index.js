@@ -3,7 +3,7 @@ const path = require("path");
 const axios = require("axios");
 const swaggerUi = require("swagger-ui-express");
 const swaggerJsDoc = require("swagger-jsdoc");
-const { requestHeaders } = require("./controllers/scraperUtils");
+const { requestHeaders, httpsAgent } = require("./controllers/scraperUtils");
 
 // Tambahkan penanganan error global
 process.on("uncaughtException", (err) => {
@@ -106,6 +106,7 @@ app.get("/image-proxy", async (req, res) => {
 
 
     const upstream = await axios.get(imageUrl.toString(), {
+      httpsAgent,
       responseType: "stream",
       timeout: 20000,
       headers: {
