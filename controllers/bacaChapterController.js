@@ -128,7 +128,7 @@ const getBacaChapter = async (req, res) => {
 
       if (
         src &&
-        /(?:img|cdn|komiku)\.komiku\.org\/upload/i.test(src) &&
+        /(?:[\w-]+\.)?komiku\.(?:org|to)\/(?:wp-content\/)?uploads?\d*\//i.test(src) &&
         (!id || /^\d+$/.test(id))
       ) {
         images.push({
