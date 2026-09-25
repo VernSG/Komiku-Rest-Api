@@ -89,7 +89,14 @@ app.get("/", (req, res) => {
 
 app.get("/image-proxy", async (req, res) => {
   try {
-    const imageUrl = new URL(req.query.url || "");
+    let rawUrl = (req.query.url || "").trim();
+    if (!rawUrl) {
+      return res.status(400).json({ error: "Parameter url tidak boleh kosong." });
+    }
+    // thumbnail.komiku.to sering timeout/unreachable, redirect/ganti ke komiku.org
+    rawUrl = rawUrl.replace(/thumbnail\.komiku\.to/gi, "thumbnail.komiku.org");
+
+    const imageUrl = new URL(rawUrl);
     const requestedReferer = req.query.referer
       ? new URL(req.query.referer, "https://komiku.org/")
       : new URL("https://komiku.org/");
@@ -104,11 +111,10 @@ app.get("/image-proxy", async (req, res) => {
       return res.status(400).json({ error: "Domain gambar tidak diizinkan." });
     }
 
-
     const upstream = await axios.get(imageUrl.toString(), {
       httpsAgent,
       responseType: "stream",
-      timeout: 20000,
+      timeout: 15000,
       headers: {
         ...requestHeaders,
         Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
