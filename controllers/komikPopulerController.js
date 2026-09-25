@@ -23,8 +23,8 @@ function parseType(...values) {
 function parseKomikCard($, el) {
   const card = $(el);
   const mangaLinkElement =
-    card.find('h3 a[href*="/manga/"], h4 a[href*="/manga/"]').first().length
-      ? card.find('h3 a[href*="/manga/"], h4 a[href*="/manga/"]').first()
+    card.find('h3 a[href*="/manga/"], h4 a[href*="/manga/"], h2 a[href*="/manga/"]').first().length
+      ? card.find('h3 a[href*="/manga/"], h4 a[href*="/manga/"], h2 a[href*="/manga/"]').first()
       : card.find('a[href*="/manga/"]').first();
   const originalLink = getAbsoluteUrl(mangaLinkElement.attr("href"));
   const mangaSlug = extractMangaSlug(originalLink);
@@ -33,9 +33,12 @@ function parseKomikCard($, el) {
     card.find("span, p, small").filter((_, node) => /views?|pembaca|·/i.test($(node).text())).first().text()
   );
   const infoParts = infoText.split(/\s*[·|]\s*/).map(normalizeText).filter(Boolean);
-  const genre = infoParts.find((part) => !/views?|pembaca/i.test(part)) || "";
+  const genre =
+    infoParts.find((part) => !/views?|pembaca/i.test(part)) ||
+    normalizeText(card.find(".ls2t, .ls4s").first().text()) ||
+    "";
   const readers = infoParts.find((part) => /views?|pembaca/i.test(part)) || "";
-  const latestChapterElement = card.find('a[href*="chapter"]').last();
+  const latestChapterElement = card.find('a[href*="chapter"], a.ls2l').last();
   const originalChapterLink = getAbsoluteUrl(latestChapterElement.attr("href"));
   const latestChapter =
     normalizeText(latestChapterElement.text()) ||
@@ -44,6 +47,7 @@ function parseKomikCard($, el) {
     extractChapterNumber(originalChapterLink) ||
     latestChapter.match(/Chapter\s*([\d.]+)/i)?.[1] ||
     "";
+  const explicitType = card.attr("data-tipe") || "";
 
   return {
     title:
@@ -60,23 +64,27 @@ function parseKomikCard($, el) {
     apiChapterLink: getApiChapterLink(originalChapterLink, mangaSlug),
     mangaSlug,
     chapterNumber,
-    type: parseType(mangaLinkElement.attr("title"), img.attr("alt"), card.text()),
+    type: explicitType || parseType(mangaLinkElement.attr("title"), img.attr("alt"), card.text()),
   };
 }
 
 function scrapeKomikSection($, sectionSelector, fallbackTitle, typeFilter = "") {
-  const sectionElement = $(sectionSelector).length
-    ? $(sectionSelector)
-    : $("section")
-        .filter((_, el) => /Komik Populer|Populer Update|Peringkat/i.test($(el).text()))
-        .first();
-  const title =
-    normalizeText(sectionElement.find("h1,h2,h3").first().text()) ||
-    fallbackTitle;
+  let cardElements;
+
+  if (typeFilter && $(`article[data-tipe="${typeFilter}"]`).length) {
+    cardElements = $(`article[data-tipe="${typeFilter}"]`);
+  } else {
+    const sectionElement = $(sectionSelector).length
+      ? $(sectionSelector)
+      : $("section")
+          .filter((_, el) => /Komik Populer|Populer Update|Peringkat|Baru Ditambahkan/i.test($(el).text()))
+          .first();
+    cardElements = sectionElement.find('article:has(a[href*="/manga/"])').length
+      ? sectionElement.find('article:has(a[href*="/manga/"])')
+      : sectionElement.find('li:has(a[href*="/manga/"]), div:has(> a[href*="/manga/"])');
+  }
+
   const seen = new Set();
-  const cardElements = sectionElement.find('article:has(a[href*="/manga/"])').length
-    ? sectionElement.find('article:has(a[href*="/manga/"])')
-    : sectionElement.find('li:has(a[href*="/manga/"]), div:has(> a[href*="/manga/"])');
   const items = cardElements
     .toArray()
     .map((el) => parseKomikCard($, el))
@@ -90,13 +98,13 @@ function scrapeKomikSection($, sectionSelector, fallbackTitle, typeFilter = "") 
         return false;
       }
 
-      if (typeFilter && item.type !== typeFilter) return false;
+      if (typeFilter && item.type.toLowerCase() !== typeFilter.toLowerCase()) return false;
       seen.add(item.mangaSlug);
       return true;
     })
     .map(({ type, ...item }) => item);
 
-  return { title: fallbackTitle || title, items };
+  return { title: fallbackTitle, items };
 }
 
 async function loadHomepage() {
