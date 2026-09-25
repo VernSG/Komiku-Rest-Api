@@ -1,0 +1,59 @@
+name: AI Self-Healing & Health Check
+
+on:
+  schedule:
+    # Berjalan 2 kali sehari (jam 00:00 dan 12:00 UTC / 07:00 dan 19:00 WIB)
+    - cron: '0 0,12 * * *'
+  workflow_dispatch: # Memungkinkan tombol "Run workflow" ditekan manual dari GitHub UI
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  health-check-and-heal:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Auto-Healer Bot
+        env:
+          PORT: 3099
+          SUMOPOD_API_KEY: ${{ secrets.SUMOPOD_API_KEY }}
+          SUMOPOD_BASE_URL: ${{ secrets.SUMOPOD_BASE_URL || 'https://api.sumopod.com/v1' }}
+          SUMOPOD_MODEL: ${{ secrets.SUMOPOD_MODEL || 'claude-3-5-sonnet' }}
+        run: node scripts/auto_healer.js
+
+      - name: Read Summary If Healed
+        id: pr_details
+        if: success()
+        run: |
+          if [ -f heal_summary.md ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request
+        if: steps.pr_details.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'fix(auto): repair broken scrapers via Sumopod AI'
+          branch: auto-fix/scraper-repair
+          delete-branch: true
+          title: '🤖 fix(auto): update broken scrapers to match latest Komiku DOM'
+          body-path: heal_summary.md
+          labels: |
+            auto-fix
+            automated-pr
