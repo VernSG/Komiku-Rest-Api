@@ -31,20 +31,33 @@ function getAbsoluteUrl(url, baseUrl = BASE_URL) {
   }
 }
 
-async function fetchHtml(url, options = {}) {
+async function fetchHtml(url, options = {}, retries = 2) {
   const absoluteUrl = getAbsoluteUrl(url);
-  const { data } = await axios.get(absoluteUrl, {
-    httpsAgent,
-    ...options,
-    headers: {
-      ...requestHeaders,
-      Referer: BASE_URL + "/",
-      ...(options.headers || {}),
-    },
-    timeout: options.timeout || 15000,
-  });
+  try {
+    const { data } = await axios.get(absoluteUrl, {
+      httpsAgent,
+      ...options,
+      headers: {
+        ...requestHeaders,
+        Referer: BASE_URL + "/",
+        ...(options.headers || {}),
+      },
+      timeout: options.timeout || 15000,
+    });
 
-  return data;
+    return data;
+  } catch (err) {
+    if (
+      retries > 0 &&
+      (err.code === "ECONNABORTED" ||
+        err.code === "ETIMEDOUT" ||
+        (err.message && err.message.includes("timeout")))
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      return fetchHtml(url, options, retries - 1);
+    }
+    throw err;
+  }
 }
 
 function normalizeText(value) {
@@ -79,7 +92,10 @@ function getImageUrl($, imgElement) {
     getSrcsetUrl(imgElement.attr("data-srcset") || imgElement.attr("srcset")) ||
     imgElement.attr("src");
 
-  return getAbsoluteUrl(src);
+  const absoluteUrl = getAbsoluteUrl(src);
+  if (!absoluteUrl) return null;
+
+  return absoluteUrl.replace(/thumbnail\.komiku\.to/gi, "thumbnail.komiku.org");
 }
 
 function extractMangaSlug(url) {
