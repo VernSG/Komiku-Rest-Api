@@ -115,6 +115,7 @@ async function runTests() {
       console.log(`Response Preview: ${preview}...`);
 
       testResults.push(result);
+      await wait(600);
       return { status, body, result };
     } catch (err) {
       console.error(`Failed request to ${path}:`, err.message);
@@ -125,6 +126,7 @@ async function runTests() {
         errors: [err.message],
         emptyArrays: [],
       });
+      await wait(600);
       return { status: 'ERROR', error: err };
     }
   }
@@ -241,7 +243,13 @@ async function runTests() {
   let chapterSlug = testSlug;
   if (detailRes.body?.chapters && detailRes.body.chapters.length > 0) {
     const chap = detailRes.body.chapters[0];
-    if (chap.chapterNumber) {
+    if (chap.apiLink) {
+      const m = chap.apiLink.match(/\/baca-chapter\/([^/]+)\/([^/]+)/);
+      if (m) {
+        chapterSlug = m[1];
+        testChapterNum = m[2];
+      }
+    } else if (chap.chapterNumber) {
       testChapterNum = chap.chapterNumber;
     }
   }
