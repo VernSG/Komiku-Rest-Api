@@ -65,14 +65,29 @@ function getChapterUrlCandidates(slug, chapter) {
     ? unpaddedChapter.padStart(2, "0")
     : normalizedChapter;
 
-  const candidates = [rawChapter, normalizedChapter, paddedChapter, unpaddedChapter]
+  const chapterCandidates = [rawChapter, normalizedChapter, paddedChapter, unpaddedChapter]
     .filter(Boolean)
     .filter((value, index, allValues) => allValues.indexOf(value) === index);
 
-  return candidates.map((chapterValue) => ({
-    chapterValue,
-    url: `${BASE_URL}/${slug}-chapter-${chapterValue}/`,
-  }));
+  const cleanSlug = String(slug || "").trim().toLowerCase();
+  const slugCandidates = [
+    cleanSlug,
+    cleanSlug.replace(/^komik-/i, ""),
+    cleanSlug.replace(/-indo$/i, ""),
+    cleanSlug.replace(/^komik-/i, "").replace(/-indo$/i, ""),
+  ].filter(Boolean).filter((value, index, allValues) => allValues.indexOf(value) === index);
+
+  const candidates = [];
+  for (const s of slugCandidates) {
+    for (const c of chapterCandidates) {
+      candidates.push({
+        chapterValue: c,
+        url: `${BASE_URL}/${s}-chapter-${c}/`,
+      });
+    }
+  }
+
+  return candidates;
 }
 
 async function fetchChapterHtml(slug, chapter) {
