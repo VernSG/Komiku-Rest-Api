@@ -54,6 +54,8 @@ jobs:
           delete-branch: true
           title: '🤖 fix(auto): update broken scrapers to match latest Komiku DOM'
           body-path: heal_summary.md
+          reviewers: ${{ github.repository_owner }}
+          assignees: ${{ github.repository_owner }}
           labels: |
             auto-fix
             automated-pr
