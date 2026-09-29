@@ -30,8 +30,8 @@ jobs:
         env:
           PORT: 3099
           SUMOPOD_API_KEY: ${{ secrets.SUMOPOD_API_KEY }}
-          SUMOPOD_BASE_URL: ${{ secrets.SUMOPOD_BASE_URL || 'https://api.sumopod.com/v1' }}
-          SUMOPOD_MODEL: ${{ secrets.SUMOPOD_MODEL || 'claude-3-5-sonnet' }}
+          SUMOPOD_BASE_URL: ${{ secrets.SUMOPOD_BASE_URL || 'https://ai.sumopod.com/v1' }}
+          SUMOPOD_MODEL: ${{ secrets.SUMOPOD_MODEL || 'gpt-4o-mini' }}
         run: node scripts/auto_healer.js
 
       - name: Read Summary If Healed

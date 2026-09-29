@@ -5,8 +5,8 @@ const axios = require('axios');
 const { fetchHtml, BASE_URL } = require('../controllers/scraperUtils');
 
 const SUMOPOD_API_KEY = process.env.SUMOPOD_API_KEY;
-const SUMOPOD_BASE_URL = (process.env.SUMOPOD_BASE_URL || 'https://api.sumopod.com/v1').replace(/\/+$/, '');
-const SUMOPOD_MODEL = process.env.SUMOPOD_MODEL || 'claude-3-5-sonnet';
+const SUMOPOD_BASE_URL = (process.env.SUMOPOD_BASE_URL || 'https://ai.sumopod.com/v1').replace(/\/+$/, '');
+const SUMOPOD_MODEL = process.env.SUMOPOD_MODEL || 'gpt-4o-mini';
 
 const ROUTE_CONTROLLER_MAP = [
   { prefix: '/rekomendasi', file: 'controllers/rekomendasiController.js', targetUrl: BASE_URL },
@@ -90,6 +90,7 @@ async function callSumopodAI(prompt) {
         },
       ],
       temperature: 0.1,
+      max_tokens: 4096,
     },
     {
       headers: {
