@@ -29,6 +29,7 @@ jobs:
       - name: Run Auto-Healer Bot
         env:
           PORT: 3099
+          CF_CLEARANCE: ${{ secrets.CF_CLEARANCE }}
           SUMOPOD_API_KEY: ${{ secrets.SUMOPOD_API_KEY }}
           SUMOPOD_BASE_URL: ${{ secrets.SUMOPOD_BASE_URL || 'https://ai.sumopod.com/v1' }}
           SUMOPOD_MODEL: ${{ secrets.SUMOPOD_MODEL || 'gpt-4o-mini' }}

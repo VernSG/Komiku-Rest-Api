@@ -11,12 +11,17 @@ const httpsAgent = new https.Agent({
 
 const requestHeaders = {
   "User-Agent":
+    process.env.SCRAPER_USER_AGENT ||
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
   Accept:
     "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
   "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
   "Cache-Control": "no-cache",
 };
+
+if (process.env.CF_CLEARANCE) {
+  requestHeaders["Cookie"] = `cf_clearance=${process.env.CF_CLEARANCE}`;
+}
 
 function getAbsoluteUrl(url, baseUrl = BASE_URL) {
   if (!url || typeof url !== "string") return null;

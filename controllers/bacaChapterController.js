@@ -100,7 +100,7 @@ async function fetchChapterHtml(slug, chapter) {
       return { data, chapterUrl: candidate.url, chapterValue: candidate.chapterValue };
     } catch (error) {
       lastError = error;
-      if (!error.response || error.response.status !== 404) throw error;
+      if (!error.response || (error.response.status !== 404 && error.response.status !== 403)) throw error;
     }
   }
 
@@ -255,6 +255,28 @@ const getBacaChapter = async (req, res) => {
         detail: "Chapter komik tersebut tidak ditemukan di situs Komiku.",
       });
     }
+
+    if (err.response && err.response.status === 403) {
+      // Periksa apakah komik dasarnya memang ada di Komiku
+      try {
+        const cleanSlug = String(req.params?.slug || "").replace(/^komik-/i, "").replace(/-indo$/i, "");
+        await fetchHtml(`${BASE_URL}/manga/${cleanSlug}/`, { timeout: 6000 });
+      } catch (checkErr) {
+        if (checkErr.response && checkErr.response.status === 404) {
+          return res.status(404).json({
+            error: "Komik tidak ditemukan",
+            detail: "Komik dengan slug tersebut tidak ditemukan di situs Komiku.",
+          });
+        }
+      }
+
+      return res.status(503).json({
+        error: "Upstream Cloudflare Protection",
+        detail:
+          "Situs upstream (komiku.org) sedang mengaktifkan Cloudflare bot challenge untuk halaman chapter. Silakan sediakan CF_CLEARANCE cookie atau gunakan proxy.",
+      });
+    }
+
     console.error("Error fetching chapter:", err);
     res.status(500).json({
       error: "Gagal mengambil data chapter komik",

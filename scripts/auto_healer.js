@@ -158,6 +158,13 @@ async function main() {
       console.error(`Gagal mengambil HTML snapshot: ${e.message}`);
     }
 
+    if (!sampleHtml || sampleHtml.length < 500) {
+      console.warn(
+        `[Healer Skip] Snapshot HTML tidak dapat diambil (kemungkinan Cloudflare WAF atau koneksi). Melewati perbaikan AI untuk ${matched.file}.`
+      );
+      continue;
+    }
+
     const currentCode = fs.readFileSync(controllerPath, 'utf8');
 
     const prompt = `The REST API endpoint "${failure.path}" (${failure.name}) is failing.
