@@ -117,6 +117,9 @@ async function main() {
   }
 
   console.log('⚠️ Terdeteksi kegagalan pada pengujian endpoint.');
+  if (initialTest.stdout) {
+    console.log(initialTest.stdout);
+  }
   const failures = parseTestFailures(initialTest.stdout);
   console.log(`Ditemukan ${failures.length} kegagalan:`, failures.map((f) => `${f.name} (${f.path})`));
 
@@ -206,6 +209,11 @@ Requirements:
     } catch (err) {
       console.error(`[Healer] Gagal memperbaiki ${matched.file}: ${err.message}`);
     }
+  }
+
+  if (healedFiles.size === 0) {
+    console.warn('\n⚠️ Tidak ada file yang dapat diperbaiki (kemungkinan seluruh kegagalan disebabkan proteksi Cloudflare WAF atau gangguan jaringan upstream).');
+    process.exit(1);
   }
 
   // Step 2: Validasi ulang seluruh test

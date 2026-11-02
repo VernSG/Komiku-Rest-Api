@@ -11,6 +11,42 @@ const {
   logEmptyParse,
 } = require("./scraperUtils");
 
+function getMangaSlugCandidates(slug) {
+  const clean = String(slug || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^komik-/i, "")
+    .replace(/-indonesia$/i, "")
+    .replace(/-indo$/i, "");
+
+  return [
+    slug,
+    clean,
+    `komik-${clean}`,
+    `${clean}-indo`,
+    `${clean}-indonesia`,
+    `komik-${clean}-indo`,
+    `komik-${clean}-indonesia`,
+  ]
+    .filter(Boolean)
+    .filter((v, i, a) => a.indexOf(v) === i);
+}
+
+async function checkMangaExists(slug) {
+  const candidates = getMangaSlugCandidates(slug);
+  for (const c of candidates) {
+    try {
+      await fetchHtml(`${BASE_URL}/manga/${c}/`, { timeout: 4000 });
+      return true;
+    } catch (e) {
+      if (!e.response || e.response.status !== 404) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function extractSlugAndChapter(url) {
   const absoluteUrl = getAbsoluteUrl(url);
   return {
@@ -258,16 +294,12 @@ const getBacaChapter = async (req, res) => {
 
     if (err.response && err.response.status === 403) {
       // Periksa apakah komik dasarnya memang ada di Komiku
-      try {
-        const cleanSlug = String(req.params?.slug || "").replace(/^komik-/i, "").replace(/-indo$/i, "");
-        await fetchHtml(`${BASE_URL}/manga/${cleanSlug}/`, { timeout: 6000 });
-      } catch (checkErr) {
-        if (checkErr.response && checkErr.response.status === 404) {
-          return res.status(404).json({
-            error: "Komik tidak ditemukan",
-            detail: "Komik dengan slug tersebut tidak ditemukan di situs Komiku.",
-          });
-        }
+      const exists = await checkMangaExists(req.params?.slug);
+      if (!exists) {
+        return res.status(404).json({
+          error: "Komik tidak ditemukan",
+          detail: "Komik dengan slug tersebut tidak ditemukan di situs Komiku.",
+        });
       }
 
       return res.status(503).json({
