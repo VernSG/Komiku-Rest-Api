@@ -29,10 +29,15 @@ const getSearch = async (req, res) => {
       const htmxUrl =
         $('[hx-get*="post_type=manga"], [data-hx-get*="post_type=manga"]')
           .first()
-          .attr("hx-get") || findHtmxUrl($);
+          .attr("hx-get") ||
+        $('[hx-get*="post_type=manga"], [data-hx-get*="post_type=manga"]')
+          .first()
+          .attr("data-hx-get") ||
+        findHtmxUrl($);
 
       if (htmxUrl) {
-        const htmxHtml = await fetchHtml(htmxUrl, {
+        const absoluteHtmxUrl = getAbsoluteUrl(htmxUrl);
+        const htmxHtml = await fetchHtml(absoluteHtmxUrl, {
           headers: {
             "HX-Request": "true",
             Referer: searchUrl,
@@ -40,10 +45,9 @@ const getSearch = async (req, res) => {
         });
         hasil = parseResults(cheerio.load(htmxHtml));
 
-
         if (!hasil.length) {
           logEmptyParse("GET /search htmx", htmxHtml, {
-            target: getAbsoluteUrl(htmxUrl),
+            target: absoluteHtmxUrl,
             selector: 'a[href*="/manga/"], img, h3',
           });
         }
@@ -82,6 +86,7 @@ function getCardElements($) {
     'article:has(a[href*="/manga/"])',
     'li:has(a[href*="/manga/"])',
     'div:has(> a[href*="/manga/"]):has(img)',
+    'div:has(a[href*="/manga/"]):has(img)',
   ];
 
   for (const selector of selectors) {
